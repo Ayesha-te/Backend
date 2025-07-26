@@ -5,14 +5,15 @@ from .models import Service, Booking
 from .serializers import ServiceSerializer, BookingSerializer
 from django.conf import settings
 import requests
+import base64
 
-# List all services
+# List all services (public)
 class ServiceListAPIView(generics.ListAPIView):
     queryset = Service.objects.all()
     serializer_class = ServiceSerializer
     permission_classes = [permissions.AllowAny]
 
-# Booking List/Create View
+# Booking List/Create View (user-specific)
 class BookingListCreateAPIView(generics.ListCreateAPIView):
     serializer_class = BookingSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -23,26 +24,25 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-# PayPal payment capture endpoint (simplified example)
+# PayPal payment capture endpoint
 class PayPalCapturePaymentAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        # Payload expected: {"orderID": "paypal-order-id", "bookingID": booking_id}
         order_id = request.data.get('orderID')
         booking_id = request.data.get('bookingID')
 
         if not order_id or not booking_id:
             return Response({"error": "orderID and bookingID are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Verify the payment with PayPal API
-        # This example assumes you have client_id and secret in settings and you fetch access token
-        # Then verify order and capture payment
-        access_token = get_paypal_access_token()
+        try:
+            access_token = get_paypal_access_token()
+        except requests.HTTPError as e:
+            return Response({"error": "Failed to get PayPal access token"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         capture_response = capture_paypal_order(access_token, order_id)
 
         if capture_response.get('status') == 'COMPLETED':
-            # Mark booking payment as completed
             try:
                 booking = Booking.objects.get(id=booking_id, user=request.user)
                 booking.payment_completed = True
@@ -59,8 +59,6 @@ class PayPalCapturePaymentAPIView(APIView):
 # Helper functions for PayPal API
 
 def get_paypal_access_token():
-    import base64
-
     client_id = settings.PAYPAL_CLIENT_ID
     secret = settings.PAYPAL_SECRET
     auth = base64.b64encode(f"{client_id}:{secret}".encode()).decode()
@@ -71,7 +69,7 @@ def get_paypal_access_token():
     }
     data = {"grant_type": "client_credentials"}
 
-    response = requests.post("https://api-m.sandbox.paypal.com/v1/oauth2/token", headers=headers, data=data)
+    response = requests.post(f"{settings.PAYPAL_API_BASE}/v1/oauth2/token", headers=headers, data=data)
     response.raise_for_status()
     return response.json()['access_token']
 
@@ -80,7 +78,7 @@ def capture_paypal_order(access_token, order_id):
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
-    url = f"https://api-m.sandbox.paypal.com/v2/checkout/orders/{order_id}/capture"
+    url = f"{settings.PAYPAL_API_BASE}/v2/checkout/orders/{order_id}/capture"
     response = requests.post(url, headers=headers)
     if response.status_code == 201:
         return response.json()['purchase_units'][0]['payments']['captures'][0]

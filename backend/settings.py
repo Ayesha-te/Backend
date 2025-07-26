@@ -106,3 +106,8 @@ load_dotenv()  # loads the .env file
 
 DVLA_API_KEY = os.getenv('DVLA_API_KEY')
 DVLA_LOOKUP_URL = os.getenv('DVLA_LOOKUP_URL')
+
+
+PAYPAL_CLIENT_ID = os.getenv('PAYPAL_CLIENT_ID')
+PAYPAL_SECRET = os.getenv('PAYPAL_SECRET')
+PAYPAL_API_BASE = os.getenv('PAYPAL_API_BASE', 'https://api-m.sandbox.paypal.com')

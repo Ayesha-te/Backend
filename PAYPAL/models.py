@@ -16,17 +16,18 @@ class Booking(models.Model):
         ('cancelled', 'Cancelled'),
     ]
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    service = models.ForeignKey(Service, on_delete=models.CASCADE)
-    scheduled_for = models.DateTimeField()  # The date/time of booking
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='bookings')
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name='bookings')
+    scheduled_for = models.DateTimeField()  # Date and time of booking
     vehicle_number = models.CharField(max_length=20)
     vehicle_details = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # You can add payment status or transaction id here for tracking payment
     payment_completed = models.BooleanField(default=False)
     payment_id = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
-        return f'Booking #{self.id} by {self.user.username} for {self.service.name}'
+        # If user has username attribute, use it, else fallback to email or str(user)
+        user_identifier = getattr(self.user, 'username', None) or getattr(self.user, 'email', str(self.user))
+        return f'Booking #{self.id} by {user_identifier} for {self.service.name}'
