@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import secrets
+import logging
 
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
@@ -11,12 +12,18 @@ from django.utils import timezone
 from .models import Service, Booking
 from .serializers import ServiceSerializer, BookingSerializer
 
+# Set up logging
+logger = logging.getLogger(__name__)
+
 # Import tasks with error handling
 try:
     from .tasks import send_booking_reminder
+    CELERY_AVAILABLE = True
 except ImportError:
     # If Celery is not available, create a dummy function
+    CELERY_AVAILABLE = False
     def send_booking_reminder(booking_id):
+        logger.warning(f"Celery not available, skipping reminder for booking {booking_id}")
         pass
 
 
@@ -32,75 +39,132 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         return Booking.objects.filter(user=self.request.user)
+    
+    def create(self, request, *args, **kwargs):
+        """Override create to provide better error handling"""
+        try:
+            logger.info(f"Booking creation request from user {request.user.id}")
+            return super().create(request, *args, **kwargs)
+        except ValueError as e:
+            logger.error(f"Validation error in booking creation: {e}")
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error in booking creation: {e}")
+            return Response(
+                {'error': 'An error occurred while creating the booking. Please try again.'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def perform_create(self, serializer):
-        data = self.request.data
-        verification_token = secrets.token_urlsafe(32)
-
-        # Parse and combine date and time
         try:
-            date_str = data.get('date')
-            time_str = data.get('time')
-            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
-            time_obj = datetime.strptime(time_str, '%H:%M').time()
-        except (ValueError, TypeError):
-            raise ValueError("Invalid date or time format.")
-
-        booking = serializer.save(
-            user=self.request.user,
-            mot_class=data.get('motClass', ''),
-            date=date_obj,
-            time=time_obj.strftime('%H:%M'),
-            vehicle_make=data.get('vehicle', {}).get('make', ''),
-            vehicle_model=data.get('vehicle', {}).get('model', ''),
-            vehicle_year=data.get('vehicle', {}).get('year', ''),
-            vehicle_registration=data.get('vehicle', {}).get('registration', ''),
-            vehicle_mileage=data.get('vehicle', {}).get('mileage', ''),
-            customer_first_name=data.get('customer', {}).get('firstName', ''),
-            customer_last_name=data.get('customer', {}).get('lastName', ''),
-            customer_email=data.get('customer', {}).get('email', ''),
-            customer_phone=data.get('customer', {}).get('phone', ''),
-            customer_address=data.get('customer', {}).get('address', ''),
-            payment_method=data.get('payment', {}).get('method', 'card'),
-            card_number=data.get('payment', {}).get('cardNumber', ''),
-            expiry_date=data.get('payment', {}).get('expiryDate', ''),
-            cvv=data.get('payment', {}).get('cvv', ''),
-            name_on_card=data.get('payment', {}).get('nameOnCard', ''),
-            is_verified=False,
-            verification_token=verification_token,
-        )
-
-        # Send booking confirmation email
-        send_mail(
-            subject='Booking Confirmation',
-            message=(
-                f"Dear {booking.customer_first_name},\n\n"
-                f"Your booking has been successfully made for {booking.date} at {booking.time}.\n"
-                f"Service: {booking.service.name}\n"
-                f"Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})\n\n"
-                f"Thank you for choosing us!\n\n"
-                f"Best regards,\nThe Team"
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[booking.customer_email],
-            fail_silently=False,
-        )
-
-        # Schedule reminder email 24 hours before the booking
-        try:
-            booking_datetime = datetime.combine(booking.date, datetime.strptime(booking.time, '%H:%M').time())
-            booking_datetime = timezone.make_aware(booking_datetime)
-            reminder_time = booking_datetime - timedelta(hours=24)
+            data = self.request.data
+            verification_token = secrets.token_urlsafe(32)
             
-            # Only schedule if reminder time is in the future
-            if reminder_time > timezone.now():
-                send_booking_reminder.apply_async(
-                    args=[booking.id],
-                    eta=reminder_time
-                )
+            logger.info(f"Creating booking for user {self.request.user.id}")
+            logger.debug(f"Booking data received: {data}")
+
+            # Parse and combine date and time
+            try:
+                date_str = data.get('date')
+                time_str = data.get('time')
+                
+                if not date_str or not time_str:
+                    raise ValueError("Date and time are required")
+                
+                date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+                time_obj = datetime.strptime(time_str, '%H:%M').time()
+                
+                logger.debug(f"Parsed date: {date_obj}, time: {time_obj}")
+                
+            except (ValueError, TypeError) as e:
+                logger.error(f"Date/time parsing error: {e}")
+                raise ValueError(f"Invalid date or time format: {e}")
+
+            # Extract nested data safely
+            vehicle_data = data.get('vehicle', {})
+            customer_data = data.get('customer', {})
+            payment_data = data.get('payment', {})
+
+            # Save the booking
+            booking = serializer.save(
+                user=self.request.user,
+                mot_class=data.get('motClass', ''),
+                date=date_obj,
+                time=time_obj.strftime('%H:%M'),
+                vehicle_make=vehicle_data.get('make', ''),
+                vehicle_model=vehicle_data.get('model', ''),
+                vehicle_year=vehicle_data.get('year', ''),
+                vehicle_registration=vehicle_data.get('registration', ''),
+                vehicle_mileage=vehicle_data.get('mileage', ''),
+                customer_first_name=customer_data.get('firstName', ''),
+                customer_last_name=customer_data.get('lastName', ''),
+                customer_email=customer_data.get('email', ''),
+                customer_phone=customer_data.get('phone', ''),
+                customer_address=customer_data.get('address', ''),
+                payment_method=payment_data.get('method', 'card'),
+                card_number=payment_data.get('cardNumber', ''),
+                expiry_date=payment_data.get('expiryDate', ''),
+                cvv=payment_data.get('cvv', ''),
+                name_on_card=payment_data.get('nameOnCard', ''),
+                is_verified=False,
+                verification_token=verification_token,
+            )
+            
+            logger.info(f"Booking created successfully with ID: {booking.id}")
+
+            # Send booking confirmation email with error handling
+            try:
+                customer_email = booking.customer_email
+                if customer_email:
+                    send_mail(
+                        subject='Booking Confirmation - Access Auto Services',
+                        message=(
+                            f"Dear {booking.customer_first_name or 'Customer'},\n\n"
+                            f"Your booking has been successfully made for {booking.date} at {booking.time}.\n"
+                            f"Service: {booking.service.name}\n"
+                            f"Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})\n\n"
+                            f"Thank you for choosing Access Auto Services!\n\n"
+                            f"Best regards,\nThe Access Auto Services Team"
+                        ),
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[customer_email],
+                        fail_silently=True,  # Don't fail booking if email fails
+                    )
+                    logger.info(f"Confirmation email sent to {customer_email}")
+                else:
+                    logger.warning(f"No email address provided for booking {booking.id}")
+            except Exception as e:
+                logger.error(f"Failed to send confirmation email for booking {booking.id}: {e}")
+
+            # Schedule reminder email 24 hours before the booking
+            try:
+                booking_datetime = datetime.combine(booking.date, datetime.strptime(booking.time, '%H:%M').time())
+                booking_datetime = timezone.make_aware(booking_datetime)
+                reminder_time = booking_datetime - timedelta(hours=24)
+                
+                # Only schedule if reminder time is in the future
+                if reminder_time > timezone.now():
+                    if CELERY_AVAILABLE:
+                        send_booking_reminder.apply_async(
+                            args=[booking.id],
+                            eta=reminder_time
+                        )
+                        logger.info(f"Reminder scheduled for booking {booking.id} at {reminder_time}")
+                    else:
+                        logger.info(f"Celery not available, reminder not scheduled for booking {booking.id}")
+                else:
+                    logger.info(f"Booking {booking.id} is too soon for reminder scheduling")
+                    
+            except Exception as e:
+                # Log the error but don't fail the booking creation
+                logger.error(f"Failed to schedule reminder for booking {booking.id}: {e}")
+                
         except Exception as e:
-            # Log the error but don't fail the booking creation
-            print(f"Failed to schedule reminder for booking {booking.id}: {e}")
+            logger.error(f"Error creating booking: {e}")
+            raise
 
 
 class BookingVerifyAPIView(APIView):
@@ -116,13 +180,46 @@ class BookingVerifyAPIView(APIView):
             return Response({'message': 'Booking successfully verified.'}, status=200)
         except Booking.DoesNotExist:
             return Response({'error': 'Invalid verification token.'}, status=404)
-from django.core.mail import send_mail
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.decorators import api_view
-from .models import Booking
-from .serializers import BookingSerializer
-from django.conf import settings
+
+
+class BookingDebugAPIView(APIView):
+    """Debug endpoint to test booking data structure"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def post(self, request):
+        logger.info(f"Debug booking request from user {request.user.id}")
+        logger.info(f"Request data: {request.data}")
+        
+        # Check required fields
+        required_fields = ['service_id', 'date', 'time']
+        missing_fields = []
+        
+        for field in required_fields:
+            if field not in request.data:
+                missing_fields.append(field)
+        
+        if missing_fields:
+            return Response({
+                'error': f'Missing required fields: {missing_fields}',
+                'received_data': request.data
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if service exists
+        try:
+            service = Service.objects.get(id=request.data['service_id'])
+            logger.info(f"Service found: {service.name}")
+        except Service.DoesNotExist:
+            return Response({
+                'error': f'Service with id {request.data["service_id"]} not found',
+                'available_services': list(Service.objects.values('id', 'name'))
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({
+            'message': 'Debug successful',
+            'user': request.user.username,
+            'service': service.name,
+            'received_data': request.data
+        })
 
      
 class PaymentCaptureAPIView(APIView):
