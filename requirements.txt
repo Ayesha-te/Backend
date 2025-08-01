@@ -1,8 +1,39 @@
+# Core Django Framework
 Django>=4.2,<5.0
-djangorestframework>=3.14
-djangorestframework-simplejwt>=5.2.2
-gunicorn>=20.1.0
-python-dotenv>=1.0.0
-paypalrestsdk==1.13.1
 
-django-cors-headers==4.0.0
+# Django REST Framework
+djangorestframework>=3.14.0
+djangorestframework-simplejwt>=5.2.2
+
+# CORS handling for frontend integration
+django-cors-headers>=4.0.0
+
+# Environment variables management
+python-dotenv>=1.0.0
+
+# HTTP requests library
+requests>=2.28.0
+
+# PayPal SDK for payment processing
+paypalrestsdk>=1.13.1
+
+# Production WSGI server
+gunicorn>=20.1.0
+
+# Optional: Background task processing (Celery)
+# Uncomment the following lines if you want to use Celery for background tasks
+# celery>=5.3.0
+# redis>=4.5.0
+
+# Optional: Database drivers (uncomment as needed)
+# PostgreSQL
+# psycopg2-binary>=2.9.0
+# MySQL
+# mysqlclient>=2.1.0
+
+# Optional: Additional useful packages
+# Pillow>=9.0.0  # For image processing
+# django-extensions>=3.2.0  # Useful Django extensions
+# django-debug-toolbar>=4.0.0  # Debug toolbar for development
+celery>=5.3.0
+redis>=4.5.0

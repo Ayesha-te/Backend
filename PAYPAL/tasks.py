@@ -1,4 +1,12 @@
-from celery import shared_task
+try:
+    from celery import shared_task
+    CELERY_AVAILABLE = True
+except ImportError:
+    CELERY_AVAILABLE = False
+    # Create a dummy decorator when Celery is not available
+    def shared_task(func):
+        return func
+
 from django.core.mail import send_mail
 from django.conf import settings
 from .models import Booking
@@ -32,3 +40,13 @@ def send_booking_reminder(booking_id):
     except Booking.DoesNotExist:
         # Booking not found, silently ignore or log if needed
         pass
+    except Exception as e:
+        # Handle any other errors
+        print(f"Error sending booking reminder: {e}")
+
+
+def send_booking_reminder_sync(booking_id):
+    """
+    Synchronous version of send_booking_reminder for when Celery is not available
+    """
+    return send_booking_reminder(booking_id)

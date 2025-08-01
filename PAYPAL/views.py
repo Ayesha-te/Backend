@@ -10,7 +10,14 @@ from django.utils import timezone
 
 from .models import Service, Booking
 from .serializers import ServiceSerializer, BookingSerializer
-from .tasks import send_booking_reminder
+
+# Import tasks with error handling
+try:
+    from .tasks import send_booking_reminder
+except ImportError:
+    # If Celery is not available, create a dummy function
+    def send_booking_reminder(booking_id):
+        pass
 
 
 class ServiceListAPIView(generics.ListAPIView):
