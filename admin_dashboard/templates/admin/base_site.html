@@ -1,0 +1,151 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+    <a href="{% url 'admin:index' %}">
+        <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiByeD0iOCIgZmlsbD0iIzAwN2NiYSIvPgo8cGF0aCBkPSJNMTIgMTJIMjhWMTZIMTJWMTJaIiBmaWxsPSJ3aGl0ZSIvPgo8cGF0aCBkPSJNMTIgMjBIMjhWMjRIMTJWMjBaIiBmaWxsPSJ3aGl0ZSIvPgo8cGF0aCBkPSJNMTIgMjhIMjRWMzJIMTJWMjhaIiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4K" alt="Access Auto Services" style="height: 32px; margin-right: 10px;">
+        Access Auto Services Admin
+    </a>
+</h1>
+{% endblock %}
+
+{% block nav-global %}
+<div id="header">
+    <div id="branding">
+        {% block branding %}{% endblock %}
+    </div>
+    {% if user.is_active and user.is_staff %}
+    <div id="user-tools">
+        <div class="dropdown">
+            <button class="dropdown-toggle" type="button" data-toggle="dropdown">
+                Welcome, <strong>{% firstof user.get_short_name user.get_username %}</strong>
+                <span class="caret"></span>
+            </button>
+            <ul class="dropdown-menu">
+                <li><a href="{% url 'admin:dashboard' %}">📊 Dashboard</a></li>
+                <li><a href="{% url 'admin:analytics' %}">📈 Analytics</a></li>
+                <li><a href="{% url 'admin:reports' %}">📋 Reports</a></li>
+                <li class="divider"></li>
+                <li><a href="{% url 'admin:password_change' %}">🔑 Change password</a></li>
+                <li><a href="{% url 'admin:logout' %}">🚪 Log out</a></li>
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+#header {
+    background: linear-gradient(135deg, #007cba 0%, #005a87 100%);
+    color: white;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+#branding h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 300;
+}
+
+#branding h1 a {
+    color: white;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+}
+
+#user-tools {
+    color: white;
+}
+
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-toggle {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: white;
+    padding: 8px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.dropdown-toggle:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    min-width: 200px;
+    z-index: 1000;
+    display: none;
+    list-style: none;
+    padding: 0;
+    margin: 5px 0 0 0;
+}
+
+.dropdown:hover .dropdown-menu {
+    display: block;
+}
+
+.dropdown-menu li {
+    margin: 0;
+}
+
+.dropdown-menu li a {
+    display: block;
+    padding: 10px 15px;
+    color: #333;
+    text-decoration: none;
+    border-bottom: 1px solid #eee;
+}
+
+.dropdown-menu li a:hover {
+    background: #f5f5f5;
+}
+
+.dropdown-menu li.divider {
+    height: 1px;
+    background: #eee;
+    margin: 5px 0;
+}
+</style>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    .module h2, .module caption, .inline-group h2 {
+        background: linear-gradient(135deg, #007cba 0%, #005a87 100%);
+        color: white;
+    }
+    
+    .button, input[type=submit], input[type=button], .submit-row input, a.button {
+        background: linear-gradient(135deg, #007cba 0%, #005a87 100%);
+        border-color: #005a87;
+    }
+    
+    .button:hover, input[type=submit]:hover, input[type=button]:hover, .submit-row input:hover, a.button:hover {
+        background: linear-gradient(135deg, #005a87 0%, #004066 100%);
+    }
+    
+    .selector-chosen h2 {
+        background: linear-gradient(135deg, #007cba 0%, #005a87 100%);
+    }
+</style>
+{% endblock %}

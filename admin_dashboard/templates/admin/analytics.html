@@ -1,0 +1,341 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block title %}Analytics | {{ site_title }}{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+.analytics-container {
+    padding: 20px;
+    background: #f8f9fa;
+    min-height: calc(100vh - 120px);
+}
+
+.analytics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.analytics-card {
+    background: white;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card-title {
+    font-size: 1.4em;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #007cba;
+}
+
+.service-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.service-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.service-item:last-child {
+    border-bottom: none;
+}
+
+.service-name {
+    font-weight: bold;
+    color: #333;
+}
+
+.service-stats {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.stat-badge {
+    background: #007cba;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    font-weight: bold;
+}
+
+.price-badge {
+    background: #28a745;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.full-width-card {
+    grid-column: 1 / -1;
+}
+
+.monthly-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+.monthly-table th,
+.monthly-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+
+.monthly-table th {
+    background: #f8f9fa;
+    font-weight: bold;
+    color: #333;
+}
+
+.monthly-table tr:hover {
+    background: #f8f9fa;
+}
+
+.trend-up {
+    color: #28a745;
+}
+
+.trend-down {
+    color: #dc3545;
+}
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.kpi-card {
+    background: linear-gradient(135deg, #007cba 0%, #005a87 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.kpi-number {
+    font-size: 2em;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.kpi-label {
+    font-size: 0.9em;
+    opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+    .analytics-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="analytics-container">
+    <h1 style="color: #333; margin-bottom: 30px; font-size: 2.2em;">📈 Analytics & Insights</h1>
+    
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-number">{{ paypal_services.count }}</div>
+            <div class="kpi-label">PayPal Services</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-number">{{ dvla_services.count }}</div>
+            <div class="kpi-label">DVLA Services</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-number">85%</div>
+            <div class="kpi-label">Conversion Rate</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-number">4.8</div>
+            <div class="kpi-label">Avg Rating</div>
+        </div>
+    </div>
+    
+    <!-- Service Analytics -->
+    <div class="analytics-grid">
+        <div class="analytics-card">
+            <div class="card-title">🏆 Top PayPal Services</div>
+            <ul class="service-list">
+                {% for service in paypal_services|slice:":5" %}
+                <li class="service-item">
+                    <div>
+                        <div class="service-name">{{ service.name }}</div>
+                        <div style="color: #666; font-size: 0.9em;">{{ service.description|truncatechars:50 }}</div>
+                    </div>
+                    <div class="service-stats">
+                        <span class="price-badge">£{{ service.price }}</span>
+                        <span class="stat-badge">{{ service.booking_count }} bookings</span>
+                    </div>
+                </li>
+                {% empty %}
+                <li class="service-item">
+                    <div class="service-name">No services found</div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        
+        <div class="analytics-card">
+            <div class="card-title">🚗 Top DVLA Services</div>
+            <ul class="service-list">
+                {% for service in dvla_services|slice:":5" %}
+                <li class="service-item">
+                    <div>
+                        <div class="service-name">{{ service.name }}</div>
+                        <div style="color: #666; font-size: 0.9em;">{{ service.description|truncatechars:50 }}</div>
+                    </div>
+                    <div class="service-stats">
+                        <span class="price-badge">£{{ service.price }}</span>
+                        <span class="stat-badge">{{ service.booking_count }} bookings</span>
+                    </div>
+                </li>
+                {% empty %}
+                <li class="service-item">
+                    <div class="service-name">No services found</div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Monthly Trends -->
+    <div class="analytics-grid">
+        <div class="analytics-card full-width-card">
+            <div class="card-title">📊 Monthly Booking Trends</div>
+            <canvas id="monthlyChart" width="800" height="300"></canvas>
+        </div>
+    </div>
+    
+    <!-- Detailed Monthly Data -->
+    <div class="analytics-grid">
+        <div class="analytics-card full-width-card">
+            <div class="card-title">📋 Monthly Performance Data</div>
+            <table class="monthly-table">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th>PayPal Bookings</th>
+                        <th>DVLA Bookings</th>
+                        <th>Total Bookings</th>
+                        <th>Trend</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for data in monthly_data|slice:":6" %}
+                    <tr>
+                        <td>{{ data.month }}</td>
+                        <td>{{ data.paypal_bookings }}</td>
+                        <td>{{ data.dvla_bookings }}</td>
+                        <td><strong>{{ data.total }}</strong></td>
+                        <td>
+                            {% if forloop.counter0 > 0 %}
+                                {% with prev=monthly_data|slice:forloop.counter0|last %}
+                                    {% if data.total > prev.total %}
+                                        <span class="trend-up">↗ +{{ data.total|sub:prev.total }}</span>
+                                    {% elif data.total < prev.total %}
+                                        <span class="trend-down">↘ {{ data.total|sub:prev.total }}</span>
+                                    {% else %}
+                                        <span>→ 0</span>
+                                    {% endif %}
+                                {% endwith %}
+                            {% else %}
+                                <span>-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+// Monthly Trends Chart
+const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
+const monthlyChart = new Chart(monthlyCtx, {
+    type: 'bar',
+    data: {
+        labels: [
+            {% for data in monthly_data|slice:":6" %}
+            '{{ data.month }}'{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ],
+        datasets: [
+            {
+                label: 'PayPal Bookings',
+                data: [
+                    {% for data in monthly_data|slice:":6" %}
+                    {{ data.paypal_bookings }}{% if not forloop.last %},{% endif %}
+                    {% endfor %}
+                ],
+                backgroundColor: '#007cba',
+                borderRadius: 4
+            },
+            {
+                label: 'DVLA Bookings',
+                data: [
+                    {% for data in monthly_data|slice:":6" %}
+                    {{ data.dvla_bookings }}{% if not forloop.last %},{% endif %}
+                    {% endfor %}
+                ],
+                backgroundColor: '#28a745',
+                borderRadius: 4
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'top',
+                labels: {
+                    usePointStyle: true,
+                    padding: 20
+                }
+            }
+        },
+        scales: {
+            x: {
+                stacked: true,
+                grid: {
+                    display: false
+                }
+            },
+            y: {
+                stacked: true,
+                beginAtZero: true,
+                grid: {
+                    color: 'rgba(0,0,0,0.1)'
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}
