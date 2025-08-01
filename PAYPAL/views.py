@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from .models import Service, Booking
 from .serializers import ServiceSerializer, BookingSerializer
+from .paypal_utils import paypal_api
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -88,6 +89,11 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
             customer_data = data.get('customer', {})
             payment_data = data.get('payment', {})
 
+            # Calculate payment amount
+            price = data.get('price', 0)
+            quantity = data.get('quantity', 1)
+            payment_amount = float(price) * int(quantity)
+
             # Save the booking
             booking = serializer.save(
                 user=self.request.user,
@@ -111,21 +117,29 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
                 name_on_card=payment_data.get('nameOnCard', ''),
                 is_verified=False,
                 verification_token=verification_token,
+                payment_amount=payment_amount,
+                payment_currency='GBP'
             )
             
             logger.info(f"Booking created successfully with ID: {booking.id}")
 
-            # Send booking confirmation email with error handling
+            # Send immediate booking confirmation email
             try:
                 customer_email = booking.customer_email
                 if customer_email:
+                    # Send immediate confirmation email
                     send_mail(
                         subject='Booking Confirmation - Access Auto Services',
                         message=(
                             f"Dear {booking.customer_first_name or 'Customer'},\n\n"
-                            f"Your booking has been successfully made for {booking.date} at {booking.time}.\n"
+                            f"Your booking has been successfully created!\n\n"
+                            f"Booking Details:\n"
                             f"Service: {booking.service.name}\n"
-                            f"Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})\n\n"
+                            f"Date: {booking.date}\n"
+                            f"Time: {booking.time}\n"
+                            f"Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})\n"
+                            f"Amount: £{booking.payment_amount}\n\n"
+                            f"Please complete your payment to confirm this booking.\n\n"
                             f"Thank you for choosing Access Auto Services!\n\n"
                             f"Best regards,\nThe Access Auto Services Team"
                         ),
@@ -133,7 +147,50 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
                         recipient_list=[customer_email],
                         fail_silently=True,  # Don't fail booking if email fails
                     )
-                    logger.info(f"Confirmation email sent to {customer_email}")
+                    logger.info(f"Immediate confirmation email sent to {customer_email}")
+                    
+                    # Also send email verification if needed
+                    try:
+                        from email_service.models import EmailVerification
+                        booking_details = {
+                            'service_name': booking.service.name,
+                            'mot_class': booking.mot_class if booking.mot_class else None,
+                            'price': float(booking.payment_amount) if booking.payment_amount else 0,
+                            'quantity': quantity,
+                            'date': str(booking.date),
+                            'time': booking.time,
+                            'vehicle_registration': booking.vehicle_registration
+                        }
+                        
+                        email_verification = EmailVerification.objects.create(
+                            email=customer_email,
+                            booking_details=booking_details,
+                            booking_url=f"https://www.access-auto-services.co.uk/booking"
+                        )
+                        
+                        # Send verification email
+                        verification_url = f"https://www.access-auto-services.co.uk/booking?verify={email_verification.verification_token}"
+                        send_mail(
+                            subject='Email Verification - Access Auto Services',
+                            message=(
+                                f"Dear {booking.customer_first_name or 'Customer'},\n\n"
+                                f"Please verify your email address to complete your booking:\n\n"
+                                f"Booking Details:\n"
+                                f"Service: {booking.service.name}\n"
+                                f"Date: {booking.date} at {booking.time}\n"
+                                f"Amount: £{booking.payment_amount}\n\n"
+                                f"Click here to verify: {verification_url}\n\n"
+                                f"Best regards,\nAccess Auto Services Team"
+                            ),
+                            from_email=settings.DEFAULT_FROM_EMAIL,
+                            recipient_list=[customer_email],
+                            fail_silently=True,
+                        )
+                        logger.info(f"Email verification sent for booking {booking.id}")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to create email verification for booking {booking.id}: {e}")
+                        
                 else:
                     logger.warning(f"No email address provided for booking {booking.id}")
             except Exception as e:
@@ -146,17 +203,49 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
                 reminder_time = booking_datetime - timedelta(hours=24)
                 
                 # Only schedule if reminder time is in the future
-                if reminder_time > timezone.now():
-                    if CELERY_AVAILABLE:
-                        send_booking_reminder.apply_async(
-                            args=[booking.id],
-                            eta=reminder_time
+                if reminder_time > timezone.now() and customer_email:
+                    try:
+                        from email_service.models import BookingReminder
+                        booking_details = {
+                            'service_name': booking.service.name,
+                            'mot_class': booking.mot_class if booking.mot_class else None,
+                            'price': float(booking.payment_amount) if booking.payment_amount else 0,
+                            'quantity': quantity,
+                            'date': str(booking.date),
+                            'time': booking.time,
+                            'vehicle_registration': booking.vehicle_registration
+                        }
+                        
+                        booking_reminder = BookingReminder.objects.create(
+                            email=customer_email,
+                            booking_details=booking_details,
+                            appointment_datetime=booking_datetime,
+                            booking_url=f"https://www.access-auto-services.co.uk/booking",
+                            scheduled_for=reminder_time
                         )
-                        logger.info(f"Reminder scheduled for booking {booking.id} at {reminder_time}")
-                    else:
-                        logger.info(f"Celery not available, reminder not scheduled for booking {booking.id}")
+                        
+                        # Schedule with Celery if available
+                        if CELERY_AVAILABLE:
+                            from email_service.tasks import send_reminder_email_task
+                            send_reminder_email_task.apply_async(
+                                args=[booking_reminder.id],
+                                eta=reminder_time
+                            )
+                            logger.info(f"Reminder scheduled for booking {booking.id} at {reminder_time}")
+                        else:
+                            logger.info(f"Celery not available, reminder created but not scheduled for booking {booking.id}")
+                            
+                    except Exception as e:
+                        logger.error(f"Failed to create booking reminder: {e}")
+                        # Fallback to old method
+                        if CELERY_AVAILABLE:
+                            send_booking_reminder.apply_async(
+                                args=[booking.id],
+                                eta=reminder_time
+                            )
+                            logger.info(f"Fallback reminder scheduled for booking {booking.id}")
                 else:
-                    logger.info(f"Booking {booking.id} is too soon for reminder scheduling")
+                    logger.info(f"Booking {booking.id} is too soon for reminder scheduling or no email provided")
                     
             except Exception as e:
                 # Log the error but don't fail the booking creation
@@ -237,30 +326,110 @@ class PaymentCaptureAPIView(APIView):
         except Booking.DoesNotExist:
             return Response({"error": "Booking not found"}, status=404)
 
-        # Simulate PayPal capture logic
-        booking.payment_status = 'paid'
-        booking.is_paid = True
-        booking.paypal_transaction_id = paypal_order_id
-        booking.save()
+        try:
+            # Capture payment through PayPal API
+            capture_result = paypal_api.capture_order(paypal_order_id)
+            
+            # Extract transaction details
+            capture_id = None
+            if capture_result.get('purchase_units'):
+                payments = capture_result['purchase_units'][0].get('payments', {})
+                captures = payments.get('captures', [])
+                if captures:
+                    capture_id = captures[0].get('id')
+            
+            # Update booking with payment information
+            booking.payment_status = 'completed'
+            booking.is_paid = True
+            booking.paypal_order_id = paypal_order_id
+            booking.paypal_transaction_id = capture_id or paypal_order_id
+            booking.save()
 
-        # Send payment confirmation email
-        send_mail(
-            subject='Payment Confirmed - Booking Confirmed',
-            message=(
-                f"Dear {booking.customer_first_name},\n\n"
-                f"Your payment has been successfully processed!\n\n"
-                f"Booking Details:\n"
-                f"Service: {booking.service.name}\n"
-                f"Date: {booking.date}\n"
-                f"Time: {booking.time}\n"
-                f"Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})\n"
-                f"Transaction ID: {paypal_order_id}\n\n"
-                f"Your booking is now confirmed. We look forward to seeing you!\n\n"
-                f"Best regards,\nThe Team"
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[booking.customer_email],
-            fail_silently=False,
-        )
+            logger.info(f"Payment captured for booking {booking_id}: {capture_id}")
 
-        return Response({"message": "Payment captured successfully!"}, status=200)  
+            # Send payment confirmation email
+            try:
+                send_mail(
+                    subject='Payment Confirmed - Booking Confirmed',
+                    message=(
+                        f"Dear {booking.customer_first_name},\n\n"
+                        f"Your payment has been successfully processed!\n\n"
+                        f"Booking Details:\n"
+                        f"Service: {booking.service.name}\n"
+                        f"Date: {booking.date}\n"
+                        f"Time: {booking.time}\n"
+                        f"Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})\n"
+                        f"Amount: £{booking.payment_amount}\n"
+                        f"Transaction ID: {booking.paypal_transaction_id}\n\n"
+                        f"Your booking is now confirmed. We look forward to seeing you!\n\n"
+                        f"Best regards,\nAccess Auto Services Team"
+                    ),
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[booking.customer_email],
+                    fail_silently=False,
+                )
+                logger.info(f"Payment confirmation email sent for booking {booking_id}")
+            except Exception as e:
+                logger.error(f"Failed to send payment confirmation email: {e}")
+
+            return Response({
+                "message": "Payment captured successfully!",
+                "transaction_id": booking.paypal_transaction_id,
+                "booking_id": booking.id
+            }, status=200)
+
+        except Exception as e:
+            logger.error(f"PayPal capture failed for order {paypal_order_id}: {e}")
+            return Response({
+                "error": "Payment capture failed. Please try again."
+            }, status=400)
+
+
+class PayPalCreateOrderAPIView(APIView):
+    """Create PayPal order for booking payment"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        booking_id = request.data.get('booking_id')
+        
+        if not booking_id:
+            return Response({"error": "Missing booking_id"}, status=400)
+
+        try:
+            booking = Booking.objects.get(id=booking_id, user=request.user)
+        except Booking.DoesNotExist:
+            return Response({"error": "Booking not found"}, status=404)
+
+        if booking.is_paid:
+            return Response({"error": "Booking is already paid"}, status=400)
+
+        try:
+            # Create PayPal order
+            amount = float(booking.payment_amount) if booking.payment_amount else 0
+            description = f"Booking for {booking.service.name} on {booking.date}"
+            
+            order = paypal_api.create_order(
+                amount=amount,
+                currency=booking.payment_currency,
+                description=description
+            )
+            
+            # Store PayPal order ID in booking
+            booking.paypal_order_id = order.get('id')
+            booking.payment_status = 'created'
+            booking.save()
+            
+            logger.info(f"PayPal order created for booking {booking_id}: {order.get('id')}")
+            
+            return Response({
+                "order_id": order.get('id'),
+                "booking_id": booking.id,
+                "amount": amount,
+                "currency": booking.payment_currency
+            }, status=201)
+
+        except Exception as e:
+            logger.error(f"Failed to create PayPal order for booking {booking_id}: {e}")
+            return Response({
+                "error": "Failed to create payment order. Please try again."
+            }, status=500)

@@ -46,7 +46,10 @@ class Booking(models.Model):
     # Payment status
     is_paid = models.BooleanField(default=False)
     payment_status = models.CharField(max_length=32, default='pending')
+    paypal_order_id = models.CharField(max_length=128, blank=True, null=True)
     paypal_transaction_id = models.CharField(max_length=128, blank=True, null=True)
+    payment_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    payment_currency = models.CharField(max_length=3, default='GBP')
 
     # Timestamps
     created = models.DateTimeField(auto_now_add=True)

@@ -12,4 +12,5 @@ urlpatterns = [
     path('api/accounts/', include('accounts.urls')),
     path('api/dvla/', include('DVLAA.urls')),
     path('api/paypal/', include('PAYPAL.urls')),
+    path('api/email/', include('email_service.urls')),
 ]

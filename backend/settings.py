@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'accounts',
     'DVLAA',
     'PAYPAL',
+    'email_service',
 
     'corsheaders',
 ]
@@ -267,6 +268,11 @@ LOGGING = {
             'propagate': False,
         },
         'accounts': {
+            'handlers': ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'email_service': {
             'handlers': ['console'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
