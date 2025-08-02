@@ -262,6 +262,11 @@ LOGGING = {
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
+        'django.core.mail': {
+            'handlers': ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
         'DVLAA': {
             'handlers': ['console'],
             'level': 'DEBUG' if DEBUG else 'INFO',

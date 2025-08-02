@@ -127,129 +127,110 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
             try:
                 customer_email = booking.customer_email
                 if customer_email:
-                    # Send immediate confirmation email
-                    send_mail(
-                        subject='Booking Confirmation - Access Auto Services',
-                        message=(
-                            f"Dear {booking.customer_first_name or 'Customer'},\n\n"
-                            f"Your booking has been successfully created!\n\n"
-                            f"Booking Details:\n"
-                            f"Service: {booking.service.name}\n"
-                            f"Date: {booking.date}\n"
-                            f"Time: {booking.time}\n"
-                            f"Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})\n"
-                            f"Amount: £{booking.payment_amount}\n\n"
-                            f"Please complete your payment to confirm this booking.\n\n"
-                            f"Thank you for choosing Access Auto Services!\n\n"
-                            f"Best regards,\nThe Access Auto Services Team"
-                        ),
-                        from_email=settings.DEFAULT_FROM_EMAIL,
-                        recipient_list=[customer_email],
-                        fail_silently=True,  # Don't fail booking if email fails
-                    )
-                    logger.info(f"Immediate confirmation email sent to {customer_email}")
+                    logger.info(f"Attempting to send confirmation email to {customer_email} for booking {booking.id}")
                     
-                    # Also send email verification if needed
+                    # Send immediate confirmation email
                     try:
-                        from email_service.models import EmailVerification
-                        booking_details = {
-                            'service_name': booking.service.name,
-                            'mot_class': booking.mot_class if booking.mot_class else None,
-                            'price': float(booking.payment_amount) if booking.payment_amount else 0,
-                            'quantity': quantity,
-                            'date': str(booking.date),
-                            'time': booking.time,
-                            'vehicle_registration': booking.vehicle_registration
-                        }
-                        
-                        email_verification = EmailVerification.objects.create(
-                            email=customer_email,
-                            booking_details=booking_details,
-                            booking_url=f"https://www.access-auto-services.co.uk/booking"
-                        )
-                        
-                        # Send verification email
-                        verification_url = f"https://www.access-auto-services.co.uk/booking?verify={email_verification.verification_token}"
-                        send_mail(
-                            subject='Email Verification - Access Auto Services',
+                        email_result = send_mail(
+                            subject='Booking Confirmation - Access Auto Services',
                             message=(
                                 f"Dear {booking.customer_first_name or 'Customer'},\n\n"
-                                f"Please verify your email address to complete your booking:\n\n"
+                                f"Your booking has been successfully created!\n\n"
                                 f"Booking Details:\n"
                                 f"Service: {booking.service.name}\n"
-                                f"Date: {booking.date} at {booking.time}\n"
+                                f"Date: {booking.date}\n"
+                                f"Time: {booking.time}\n"
+                                f"Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})\n"
                                 f"Amount: £{booking.payment_amount}\n\n"
-                                f"Click here to verify: {verification_url}\n\n"
-                                f"Best regards,\nAccess Auto Services Team"
+                                f"Please complete your payment to confirm this booking.\n\n"
+                                f"Thank you for choosing Access Auto Services!\n\n"
+                                f"Best regards,\nThe Access Auto Services Team"
                             ),
                             from_email=settings.DEFAULT_FROM_EMAIL,
                             recipient_list=[customer_email],
-                            fail_silently=True,
+                            fail_silently=False,  # Changed to False to catch errors
                         )
-                        logger.info(f"Email verification sent for booking {booking.id}")
                         
-                    except Exception as e:
-                        logger.error(f"Failed to create email verification for booking {booking.id}: {e}")
+                        if email_result:
+                            logger.info(f"✅ Booking confirmation email sent successfully to {customer_email}")
+                        else:
+                            logger.error(f"❌ Booking confirmation email failed to send to {customer_email} (result: {email_result})")
+                            
+                    except Exception as email_error:
+                        logger.error(f"❌ Error sending booking confirmation email to {customer_email}: {email_error}")
                         
                 else:
-                    logger.warning(f"No email address provided for booking {booking.id}")
+                    logger.warning(f"⚠️ No email address provided for booking {booking.id}")
             except Exception as e:
-                logger.error(f"Failed to send confirmation email for booking {booking.id}: {e}")
+                logger.error(f"❌ Failed to send confirmation email for booking {booking.id}: {e}")
 
             # Schedule reminder email 24 hours before the booking
             try:
-                booking_datetime = datetime.combine(booking.date, datetime.strptime(booking.time, '%H:%M').time())
-                booking_datetime = timezone.make_aware(booking_datetime)
-                reminder_time = booking_datetime - timedelta(hours=24)
-                
-                # Only schedule if reminder time is in the future
-                if reminder_time > timezone.now() and customer_email:
-                    try:
-                        from email_service.models import BookingReminder
-                        booking_details = {
-                            'service_name': booking.service.name,
-                            'mot_class': booking.mot_class if booking.mot_class else None,
-                            'price': float(booking.payment_amount) if booking.payment_amount else 0,
-                            'quantity': quantity,
-                            'date': str(booking.date),
-                            'time': booking.time,
-                            'vehicle_registration': booking.vehicle_registration
-                        }
-                        
-                        booking_reminder = BookingReminder.objects.create(
-                            email=customer_email,
-                            booking_details=booking_details,
-                            appointment_datetime=booking_datetime,
-                            booking_url=f"https://www.access-auto-services.co.uk/booking",
-                            scheduled_for=reminder_time
-                        )
-                        
-                        # Schedule with Celery if available
-                        if CELERY_AVAILABLE:
-                            from email_service.tasks import send_reminder_email_task
-                            send_reminder_email_task.apply_async(
-                                args=[booking_reminder.id],
-                                eta=reminder_time
-                            )
-                            logger.info(f"Reminder scheduled for booking {booking.id} at {reminder_time}")
-                        else:
-                            logger.info(f"Celery not available, reminder created but not scheduled for booking {booking.id}")
+                if customer_email:
+                    booking_datetime = datetime.combine(booking.date, datetime.strptime(booking.time, '%H:%M').time())
+                    booking_datetime = timezone.make_aware(booking_datetime)
+                    reminder_time = booking_datetime - timedelta(hours=24)
+                    
+                    logger.info(f"Booking datetime: {booking_datetime}, Reminder time: {reminder_time}, Current time: {timezone.now()}")
+                    
+                    # Only schedule if reminder time is in the future
+                    if reminder_time > timezone.now():
+                        try:
+                            from email_service.models import BookingReminder
+                            booking_details = {
+                                'service_name': booking.service.name,
+                                'mot_class': booking.mot_class if booking.mot_class else None,
+                                'price': float(booking.payment_amount) if booking.payment_amount else 0,
+                                'quantity': quantity,
+                                'date': str(booking.date),
+                                'time': booking.time,
+                                'vehicle_registration': booking.vehicle_registration
+                            }
                             
-                    except Exception as e:
-                        logger.error(f"Failed to create booking reminder: {e}")
-                        # Fallback to old method
-                        if CELERY_AVAILABLE:
-                            send_booking_reminder.apply_async(
-                                args=[booking.id],
-                                eta=reminder_time
+                            logger.info(f"Creating booking reminder for {customer_email}")
+                            booking_reminder = BookingReminder.objects.create(
+                                email=customer_email,
+                                booking_details=booking_details,
+                                appointment_datetime=booking_datetime,
+                                booking_url=f"https://www.access-auto-services.co.uk/booking",
+                                scheduled_for=reminder_time
                             )
-                            logger.info(f"Fallback reminder scheduled for booking {booking.id}")
+                            logger.info(f"Booking reminder created with ID: {booking_reminder.id}")
+                            
+                            # Schedule with Celery if available
+                            if CELERY_AVAILABLE:
+                                try:
+                                    from email_service.tasks import send_reminder_email_task
+                                    send_reminder_email_task.apply_async(
+                                        args=[booking_reminder.id],
+                                        eta=reminder_time
+                                    )
+                                    logger.info(f"✅ Reminder scheduled with Celery for booking {booking.id} at {reminder_time}")
+                                except Exception as celery_error:
+                                    logger.error(f"❌ Failed to schedule reminder with Celery: {celery_error}")
+                            else:
+                                logger.info(f"⚠️ Celery not available, reminder created but not scheduled for booking {booking.id}")
+                                
+                        except Exception as e:
+                            logger.error(f"❌ Failed to create booking reminder: {e}")
+                            # Fallback to old method
+                            try:
+                                if CELERY_AVAILABLE:
+                                    send_booking_reminder.apply_async(
+                                        args=[booking.id],
+                                        eta=reminder_time
+                                    )
+                                    logger.info(f"✅ Fallback reminder scheduled for booking {booking.id}")
+                            except Exception as fallback_error:
+                                logger.error(f"❌ Fallback reminder scheduling also failed: {fallback_error}")
+                    else:
+                        logger.info(f"⚠️ Booking {booking.id} is too soon for reminder scheduling (reminder time: {reminder_time})")
                 else:
-                    logger.info(f"Booking {booking.id} is too soon for reminder scheduling or no email provided")
+                    logger.warning(f"⚠️ No email provided for booking {booking.id}, skipping reminder scheduling")
                     
             except Exception as e:
                 # Log the error but don't fail the booking creation
-                logger.error(f"Failed to schedule reminder for booking {booking.id}: {e}")
+                logger.error(f"❌ Failed to schedule reminder for booking {booking.id}: {e}")
                 
         except Exception as e:
             logger.error(f"Error creating booking: {e}")
