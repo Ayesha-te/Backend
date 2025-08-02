@@ -131,20 +131,97 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
                     
                     # Send immediate confirmation email
                     try:
+                        # Get customer name - prefer customer data, fallback to user data
+                        customer_name = booking.customer_first_name
+                        if not customer_name and booking.user:
+                            customer_name = booking.user.first_name or booking.user.username
+                        if not customer_name:
+                            customer_name = 'Customer'
+                        
+                        # Build vehicle information
+                        vehicle_info = ""
+                        if booking.vehicle_make or booking.vehicle_model or booking.vehicle_registration:
+                            vehicle_parts = []
+                            if booking.vehicle_make:
+                                vehicle_parts.append(booking.vehicle_make)
+                            if booking.vehicle_model:
+                                vehicle_parts.append(booking.vehicle_model)
+                            if booking.vehicle_year:
+                                vehicle_parts.append(f"({booking.vehicle_year})")
+                            
+                            vehicle_info = " ".join(vehicle_parts)
+                            if booking.vehicle_registration:
+                                vehicle_info += f" - {booking.vehicle_registration}"
+                            
+                            if booking.vehicle_mileage:
+                                vehicle_info += f" - {booking.vehicle_mileage} miles"
+                        else:
+                            vehicle_info = "Not specified"
+                        
+                        # Build MOT class information
+                        mot_info = ""
+                        if booking.mot_class:
+                            mot_info = f"MOT Class: {booking.mot_class}\n"
+                        
+                        # Build customer information section
+                        customer_info = ""
+                        if booking.customer_first_name or booking.customer_last_name:
+                            full_name = f"{booking.customer_first_name or ''} {booking.customer_last_name or ''}".strip()
+                            if full_name:
+                                customer_info += f"Customer: {full_name}\n"
+                        elif booking.user:
+                            user_name = f"{booking.user.first_name or ''} {booking.user.last_name or ''}".strip()
+                            if user_name:
+                                customer_info += f"Customer: {user_name}\n"
+                            else:
+                                customer_info += f"Customer: {booking.user.username}\n"
+                        
+                        if booking.customer_phone:
+                            customer_info += f"Phone: {booking.customer_phone}\n"
+                        
+                        if booking.customer_address:
+                            customer_info += f"Address: {booking.customer_address}\n"
+                        
+                        # Build payment information
+                        payment_info = ""
+                        if booking.payment_amount:
+                            payment_info = f"Amount: £{booking.payment_amount}"
+                            if booking.payment_currency and booking.payment_currency != 'GBP':
+                                payment_info = f"Amount: {booking.payment_amount} {booking.payment_currency}"
+                        else:
+                            # Fallback to service price
+                            payment_info = f"Amount: £{booking.service.price}"
+                        
                         email_result = send_mail(
                             subject='Booking Confirmation - Access Auto Services',
                             message=(
-                                f"Dear {booking.customer_first_name or 'Customer'},\n\n"
+                                f"Dear {customer_name},\n\n"
                                 f"Your booking has been successfully created!\n\n"
-                                f"Booking Details:\n"
+                                f"BOOKING DETAILS:\n"
+                                f"{'='*50}\n"
                                 f"Service: {booking.service.name}\n"
-                                f"Date: {booking.date}\n"
+                                f"{mot_info}"
+                                f"Date: {booking.date.strftime('%A, %B %d, %Y')}\n"
                                 f"Time: {booking.time}\n"
-                                f"Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})\n"
-                                f"Amount: £{booking.payment_amount}\n\n"
-                                f"Please complete your payment to confirm this booking.\n\n"
+                                f"Vehicle: {vehicle_info}\n"
+                                f"{payment_info}\n\n"
+                                f"CUSTOMER INFORMATION:\n"
+                                f"{'='*50}\n"
+                                f"{customer_info}"
+                                f"Email: {customer_email}\n\n"
+                                f"NEXT STEPS:\n"
+                                f"{'='*50}\n"
+                               
+                                f"• You will receive a reminder email 24 hours before your appointment\n"
+                                f"• If you need to reschedule or cancel, please contact us as soon as possible\n\n"
+                                f"CONTACT INFORMATION:\n"
+                                f"{'='*50}\n"
+                                f"Access Auto Services\n"
+                                f"Email: {settings.DEFAULT_FROM_EMAIL}\n"
+                                f"Website: https://www.access-auto-services.co.uk\n\n"
                                 f"Thank you for choosing Access Auto Services!\n\n"
-                                f"Best regards,\nThe Access Auto Services Team"
+                                f"Best regards,\n"
+                                f"The Access Auto Services Team"
                             ),
                             from_email=settings.DEFAULT_FROM_EMAIL,
                             recipient_list=[customer_email],

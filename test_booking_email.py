@@ -86,21 +86,49 @@ def test_booking_creation_with_email():
         
         print(f"\n=== Testing Email Sending Logic ===")
         
-        # Test immediate confirmation email
+        # Test immediate confirmation email with actual booking data
         try:
             print(f"Sending immediate confirmation email to {customer_email}")
+            
+            # Get customer name - prefer customer data, fallback to user data
+            customer_name = booking.customer_first_name
+            if not customer_name and booking.user:
+                customer_name = booking.user.first_name or booking.user.username
+            if not customer_name:
+                customer_name = 'Customer'
+            
+            # Build vehicle information
+            vehicle_info = ""
+            if booking.vehicle_make or booking.vehicle_model or booking.vehicle_registration:
+                vehicle_parts = []
+                if booking.vehicle_make:
+                    vehicle_parts.append(booking.vehicle_make)
+                if booking.vehicle_model:
+                    vehicle_parts.append(booking.vehicle_model)
+                if booking.vehicle_year:
+                    vehicle_parts.append(f"({booking.vehicle_year})")
+                
+                vehicle_info = " ".join(vehicle_parts)
+                if booking.vehicle_registration:
+                    vehicle_info += f" - {booking.vehicle_registration}"
+                
+                if booking.vehicle_mileage:
+                    vehicle_info += f" - {booking.vehicle_mileage} miles"
+            else:
+                vehicle_info = "Not specified"
+            
             email_result = send_mail(
                 subject='Booking Confirmation - Access Auto Services',
                 message=(
-                    f"Dear {booking.customer_first_name or 'Customer'},\n\n"
+                    f"Dear {customer_name},\n\n"
                     f"Your booking has been successfully created!\n\n"
-                    f"Booking Details:\n"
+                    f"BOOKING DETAILS:\n"
+                    f"{'='*50}\n"
                     f"Service: {booking.service.name}\n"
-                    f"Date: {booking.date}\n"
+                    f"Date: {booking.date.strftime('%A, %B %d, %Y')}\n"
                     f"Time: {booking.time}\n"
-                    f"Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})\n"
+                    f"Vehicle: {vehicle_info}\n"
                     f"Amount: £{booking.payment_amount}\n\n"
-                   
                     f"Thank you for choosing Access Auto Services!\n\n"
                     f"Best regards,\nThe Access Auto Services Team"
                 ),

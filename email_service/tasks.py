@@ -32,24 +32,29 @@ def send_reminder_email_task(reminder_id):
         booking_details = booking_reminder.booking_details
         booking_summary = format_booking_details(booking_details)
         
-        subject = "Booking Reminder - Access Auto Services"
-        message = f"""
-Dear Customer,
+        subject = "Appointment Reminder - Access Auto Services"
+        message = f"""Dear Customer,
 
 This is a friendly reminder about your upcoming appointment with Access Auto Services.
 
-Your booking details:
+APPOINTMENT DETAILS:
 {booking_summary}
 
-Appointment Date & Time: {booking_reminder.appointment_datetime.strftime('%Y-%m-%d at %H:%M')}
+IMPORTANT REMINDERS:
+• Please arrive 10 minutes before your scheduled time
+• Bring your vehicle registration documents
+• Ensure your vehicle is accessible and ready for service
+• If you need to reschedule, please contact us at least 24 hours in advance
+
+CONTACT INFORMATION:
+Access Auto Services
+Email: {settings.DEFAULT_FROM_EMAIL}
+Website: https://www.access-auto-services.co.uk
 
 We look forward to seeing you!
 
-If you need to reschedule or have any questions, please contact us.
-
 Best regards,
-Access Auto Services Team
-        """
+The Access Auto Services Team"""
         
         send_mail(
             subject=subject,
@@ -79,22 +84,28 @@ def format_booking_details(booking_details):
     if isinstance(booking_details, list):
         for i, booking in enumerate(booking_details, 1):
             formatted += f"\nService {i}:\n"
-            formatted += f"  Service: {booking.get('service_name', 'N/A')}\n"
+            formatted += f"{'='*30}\n"
+            formatted += f"Service: {booking.get('service_name', 'N/A')}\n"
             if booking.get('mot_class'):
-                formatted += f"  MOT Class: {booking.get('mot_class')}\n"
-            formatted += f"  Price: £{booking.get('price', 0)}\n"
-            formatted += f"  Quantity: {booking.get('quantity', 1)}\n"
+                formatted += f"MOT Class: {booking.get('mot_class')}\n"
+            formatted += f"Date: {booking.get('date', 'N/A')}\n"
+            formatted += f"Time: {booking.get('time', 'N/A')}\n"
             if booking.get('vehicle_registration'):
-                formatted += f"  Vehicle: {booking.get('vehicle_registration')}\n"
+                formatted += f"Vehicle Registration: {booking.get('vehicle_registration')}\n"
+            formatted += f"Price: £{booking.get('price', 0)}\n"
             formatted += "\n"
     else:
         # Single booking
+        formatted += f"{'='*50}\n"
         formatted += f"Service: {booking_details.get('service_name', 'N/A')}\n"
         if booking_details.get('mot_class'):
             formatted += f"MOT Class: {booking_details.get('mot_class')}\n"
-        formatted += f"Price: £{booking_details.get('price', 0)}\n"
+        formatted += f"Date: {booking_details.get('date', 'N/A')}\n"
+        formatted += f"Time: {booking_details.get('time', 'N/A')}\n"
         if booking_details.get('vehicle_registration'):
-            formatted += f"Vehicle: {booking_details.get('vehicle_registration')}\n"
+            formatted += f"Vehicle Registration: {booking_details.get('vehicle_registration')}\n"
+        formatted += f"Price: £{booking_details.get('price', 0)}\n"
+        formatted += f"{'='*50}\n"
     
     return formatted
 
