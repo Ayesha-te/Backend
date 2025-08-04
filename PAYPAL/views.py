@@ -192,6 +192,12 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
                             # Fallback to service price
                             payment_info = f"Amount: £{booking.service.price}"
                         
+                        # Send to both customer and owner
+                        recipient_list = [customer_email]
+                        owner_email = settings.OWNER_EMAIL
+                        if owner_email and owner_email not in recipient_list:
+                            recipient_list.append(owner_email)
+                        
                         email_result = send_mail(
                             subject='Booking Confirmation - Access Auto Services',
                             message=(
@@ -224,7 +230,7 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
                                 f"The Access Auto Services Team"
                             ),
                             from_email=settings.DEFAULT_FROM_EMAIL,
-                            recipient_list=[customer_email],
+                            recipient_list=recipient_list,
                             fail_silently=False,  # Changed to False to catch errors
                         )
                         
@@ -405,8 +411,13 @@ class PaymentCaptureAPIView(APIView):
 
             logger.info(f"Payment captured for booking {booking_id}: {capture_id}")
 
-            # Send payment confirmation email
+            # Send payment confirmation email to both customer and owner
             try:
+                recipient_list = [booking.customer_email]
+                owner_email = settings.OWNER_EMAIL
+                if owner_email and owner_email not in recipient_list:
+                    recipient_list.append(owner_email)
+                
                 send_mail(
                     subject='Payment Confirmed - Booking Confirmed',
                     message=(
@@ -423,10 +434,10 @@ class PaymentCaptureAPIView(APIView):
                         f"Best regards,\nAccess Auto Services Team"
                     ),
                     from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[booking.customer_email],
+                    recipient_list=recipient_list,
                     fail_silently=False,
                 )
-                logger.info(f"Payment confirmation email sent for booking {booking_id}")
+                logger.info(f"Payment confirmation email sent for booking {booking_id} to {recipient_list}")
             except Exception as e:
                 logger.error(f"Failed to send payment confirmation email: {e}")
 

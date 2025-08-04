@@ -56,11 +56,17 @@ We look forward to seeing you!
 Best regards,
 The Access Auto Services Team"""
         
+        # Send to both customer and owner
+        recipient_list = [booking_reminder.email]
+        owner_email = settings.OWNER_EMAIL
+        if owner_email and owner_email not in recipient_list:
+            recipient_list.append(owner_email)
+        
         send_mail(
             subject=subject,
             message=message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[booking_reminder.email],
+            recipient_list=recipient_list,
             fail_silently=False,
         )
         

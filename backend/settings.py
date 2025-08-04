@@ -207,6 +207,7 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+OWNER_EMAIL = os.getenv('OWNER_EMAIL', 'info.accessautoservices@gmail.com')
 
 # Redis Configuration (for Celery/Cache) - Optional
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')

@@ -25,6 +25,12 @@ def send_booking_reminder(booking_id):
         # Compose message using customer name if available, else user info
         recipient_name = booking.customer_first_name or (booking.user.first_name if booking.user else '') or (booking.user.username if booking.user else 'Customer')
         
+        # Send to both customer and owner
+        recipient_list = [email_to]
+        owner_email = settings.OWNER_EMAIL
+        if owner_email and owner_email not in recipient_list:
+            recipient_list.append(owner_email)
+        
         send_mail(
             subject='Booking Reminder',
             message=(
@@ -34,7 +40,7 @@ def send_booking_reminder(booking_id):
                 "See you soon!"
             ),
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email_to],
+            recipient_list=recipient_list,
             fail_silently=False,
         )
     except Booking.DoesNotExist:
