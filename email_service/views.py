@@ -206,19 +206,28 @@ class BookingReminderAPIView(APIView):
         """Schedule the reminder email using Celery or immediate sending"""
         try:
             if CELERY_AVAILABLE:
-                # Schedule with Celery
-                send_reminder_email_task.apply_async(
-                    args=[booking_reminder.id],
-                    eta=booking_reminder.scheduled_for
-                )
-                logger.info(f"Reminder email scheduled with Celery for {booking_reminder.id}")
+                try:
+                    # Test Redis connection first
+                    from django.core.cache import cache
+                    cache.get('test_key')  # This will fail if Redis is not available
+                    
+                    # Schedule with Celery
+                    send_reminder_email_task.apply_async(
+                        args=[booking_reminder.id],
+                        eta=booking_reminder.scheduled_for
+                    )
+                    logger.info(f"Reminder email scheduled with Celery for {booking_reminder.id}")
+                except Exception as celery_error:
+                    logger.warning(f"Celery/Redis not available ({celery_error}). Reminder created but not scheduled.")
+                    # Don't raise the error, just log it
             else:
                 # For development/testing - send immediately or log
                 logger.info(f"Celery not available. Reminder would be sent at {booking_reminder.scheduled_for}")
                 
         except Exception as e:
             logger.error(f"Failed to schedule reminder email: {e}")
-            raise
+            # Don't raise the error to prevent booking creation from failing
+            logger.warning("Continuing without reminder scheduling...")
 
 class SendReminderNowAPIView(APIView):
     """

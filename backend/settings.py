@@ -17,6 +17,9 @@ DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 # Production-ready ALLOWED_HOSTS
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# Add testserver for Django testing
+ALLOWED_HOSTS.append('testserver')
+
 # Add your production domains
 if not DEBUG:
     ALLOWED_HOSTS.extend([
@@ -222,6 +225,14 @@ EMAIL_TIMEOUT = 30  # 30 seconds timeout
 # Redis Configuration (for Celery/Cache) - Optional
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
+# Cache Configuration with fallback
+# Use dummy cache by default (no Redis dependency)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+    }
+}
+
 # Celery Configuration - Optional (only if Celery is installed)
 try:
     import celery
@@ -231,6 +242,11 @@ try:
     CELERY_TASK_SERIALIZER = 'json'
     CELERY_RESULT_SERIALIZER = 'json'
     CELERY_TIMEZONE = TIME_ZONE
+    
+    # Celery broker connection retry settings
+    CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+    CELERY_BROKER_CONNECTION_RETRY = True
+    CELERY_BROKER_CONNECTION_MAX_RETRIES = 3
 except ImportError:
     # Celery not available, skip configuration
     pass

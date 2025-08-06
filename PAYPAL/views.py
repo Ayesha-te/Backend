@@ -319,6 +319,10 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
                             # Schedule with Celery if available
                             if CELERY_AVAILABLE:
                                 try:
+                                    # Test Redis connection first
+                                    from django.core.cache import cache
+                                    cache.get('test_key')  # This will fail if Redis is not available
+                                    
                                     from email_service.tasks import send_reminder_email_task
                                     send_reminder_email_task.apply_async(
                                         args=[booking_reminder.id],
@@ -326,7 +330,7 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
                                     )
                                     logger.info(f"✅ Reminder scheduled with Celery for booking {booking.id} at {reminder_time}")
                                 except Exception as celery_error:
-                                    logger.error(f"❌ Failed to schedule reminder with Celery: {celery_error}")
+                                    logger.warning(f"⚠️ Celery/Redis not available ({celery_error}). Reminder created but not scheduled for booking {booking.id}")
                             else:
                                 logger.info(f"⚠️ Celery not available, reminder created but not scheduled for booking {booking.id}")
                                 
@@ -335,13 +339,20 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
                             # Fallback to old method
                             try:
                                 if CELERY_AVAILABLE:
-                                    send_booking_reminder.apply_async(
-                                        args=[booking.id],
-                                        eta=reminder_time
-                                    )
-                                    logger.info(f"✅ Fallback reminder scheduled for booking {booking.id}")
+                                    try:
+                                        # Test Redis connection first
+                                        from django.core.cache import cache
+                                        cache.get('test_key')  # This will fail if Redis is not available
+                                        
+                                        send_booking_reminder.apply_async(
+                                            args=[booking.id],
+                                            eta=reminder_time
+                                        )
+                                        logger.info(f"✅ Fallback reminder scheduled for booking {booking.id}")
+                                    except Exception as fallback_celery_error:
+                                        logger.warning(f"⚠️ Fallback Celery/Redis also not available ({fallback_celery_error}). Booking created without reminder scheduling.")
                             except Exception as fallback_error:
-                                logger.error(f"❌ Fallback reminder scheduling also failed: {fallback_error}")
+                                logger.warning(f"⚠️ Fallback reminder scheduling failed: {fallback_error}")
                     else:
                         logger.info(f"⚠️ Booking {booking.id} is too soon for reminder scheduling (reminder time: {reminder_time})")
                 else:

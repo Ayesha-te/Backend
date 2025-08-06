@@ -15,6 +15,6 @@ urlpatterns = [
     path('favicon.ico', favicon_view), # Handle favicon requests
     path('api/accounts/', include('accounts.urls')),
     path('api/dvla/', include('DVLAA.urls')),
-    path('api/paypal/', include('PAYPAL.urls')),
+    path('api/paypal/', include(('PAYPAL.urls', 'PAYPAL'), namespace='paypal')),
     path('api/email/', include('email_service.urls')),
 ]
