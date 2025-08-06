@@ -203,11 +203,21 @@ DVLA_LOOKUP_URL = os.getenv('DVLA_LOOKUP_URL')
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
 EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
+
+# Handle TLS/SSL configuration - they are mutually exclusive
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False').lower() == 'true'
+if EMAIL_USE_SSL:
+    EMAIL_USE_TLS = False  # SSL and TLS are mutually exclusive
+else:
+    EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True').lower() == 'true'
+
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 OWNER_EMAIL = os.getenv('OWNER_EMAIL', 'info.accessautoservices@gmail.com')
+
+# Email timeout settings to prevent hanging
+EMAIL_TIMEOUT = 30  # 30 seconds timeout
 
 # Redis Configuration (for Celery/Cache) - Optional
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')

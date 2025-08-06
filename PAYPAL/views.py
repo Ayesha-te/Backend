@@ -39,7 +39,26 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Booking.objects.filter(user=self.request.user)
+        try:
+            logger.info(f"Fetching bookings for user {self.request.user.id}")
+            queryset = Booking.objects.filter(user=self.request.user).order_by('-created')
+            logger.info(f"Found {queryset.count()} bookings for user {self.request.user.id}")
+            return queryset
+        except Exception as e:
+            logger.error(f"Error fetching bookings for user {self.request.user.id}: {e}")
+            return Booking.objects.none()
+    
+    def list(self, request, *args, **kwargs):
+        """Override list to provide better error handling"""
+        try:
+            logger.info(f"Booking list request from user {request.user.id}")
+            return super().list(request, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error in booking list for user {request.user.id}: {e}")
+            return Response(
+                {'error': 'An error occurred while fetching bookings. Please try again.'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     def create(self, request, *args, **kwargs):
         """Override create to provide better error handling"""
@@ -198,49 +217,66 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
                         if owner_email and owner_email not in recipient_list:
                             recipient_list.append(owner_email)
                         
-                        email_result = send_mail(
-                            subject='Booking Confirmation - Access Auto Services',
-                            message=(
-                                f"Dear {customer_name},\n\n"
-                                f"Your booking has been successfully created!\n\n"
-                                f"BOOKING DETAILS:\n"
-                                f"{'='*50}\n"
-                                f"Service: {booking.service.name}\n"
-                                f"{mot_info}"
-                                f"Date: {booking.date.strftime('%A, %B %d, %Y')}\n"
-                                f"Time: {booking.time}\n"
-                                f"Vehicle: {vehicle_info}\n"
-                                f"{payment_info}\n\n"
-                                f"CUSTOMER INFORMATION:\n"
-                                f"{'='*50}\n"
-                                f"{customer_info}"
-                                f"Email: {customer_email}\n\n"
-                                f"NEXT STEPS:\n"
-                                f"{'='*50}\n"
-                               
-                                f"• You will receive a reminder email 24 hours before your appointment\n"
-                                f"• If you need to reschedule or cancel, please contact us as soon as possible\n\n"
-                                f"CONTACT INFORMATION:\n"
-                                f"{'='*50}\n"
-                                f"Access Auto Services\n"
-                                f"Email: {settings.DEFAULT_FROM_EMAIL}\n"
-                                f"Website: https://www.access-auto-services.co.uk\n\n"
-                                f"Thank you for choosing Access Auto Services!\n\n"
-                                f"Best regards,\n"
-                                f"The Access Auto Services Team"
-                            ),
-                            from_email=settings.DEFAULT_FROM_EMAIL,
-                            recipient_list=recipient_list,
-                            fail_silently=False,  # Changed to False to catch errors
-                        )
+                        # Send email with timeout and error handling
+                        import threading
+                        import signal
                         
-                        if email_result:
-                            logger.info(f"✅ Booking confirmation email sent successfully to {customer_email}")
-                        else:
-                            logger.error(f"❌ Booking confirmation email failed to send to {customer_email} (result: {email_result})")
+                        def send_email_with_timeout():
+                            try:
+                                email_result = send_mail(
+                                    subject='Booking Confirmation - Access Auto Services',
+                                    message=(
+                                        f"Dear {customer_name},\n\n"
+                                        f"Your booking has been successfully created!\n\n"
+                                        f"BOOKING DETAILS:\n"
+                                        f"{'='*50}\n"
+                                        f"Service: {booking.service.name}\n"
+                                        f"{mot_info}"
+                                        f"Date: {booking.date.strftime('%A, %B %d, %Y')}\n"
+                                        f"Time: {booking.time}\n"
+                                        f"Vehicle: {vehicle_info}\n"
+                                        f"{payment_info}\n\n"
+                                        f"CUSTOMER INFORMATION:\n"
+                                        f"{'='*50}\n"
+                                        f"{customer_info}"
+                                        f"Email: {customer_email}\n\n"
+                                        f"NEXT STEPS:\n"
+                                        f"{'='*50}\n"
+                                       
+                                        f"• You will receive a reminder email 24 hours before your appointment\n"
+                                        f"• If you need to reschedule or cancel, please contact us as soon as possible\n\n"
+                                        f"CONTACT INFORMATION:\n"
+                                        f"{'='*50}\n"
+                                        f"Access Auto Services\n"
+                                        f"Email: {settings.DEFAULT_FROM_EMAIL}\n"
+                                        f"Website: https://www.access-auto-services.co.uk\n\n"
+                                        f"Thank you for choosing Access Auto Services!\n\n"
+                                        f"Best regards,\n"
+                                        f"The Access Auto Services Team"
+                                    ),
+                                    from_email=settings.DEFAULT_FROM_EMAIL,
+                                    recipient_list=recipient_list,
+                                    fail_silently=True,  # Changed to True to prevent blocking
+                                )
+                                
+                                if email_result:
+                                    logger.info(f"✅ Booking confirmation email sent successfully to {customer_email}")
+                                else:
+                                    logger.error(f"❌ Booking confirmation email failed to send to {customer_email} (result: {email_result})")
+                                    
+                            except Exception as email_error:
+                                logger.error(f"❌ Error sending booking confirmation email to {customer_email}: {email_error}")
+                        
+                        # Send email in background thread to prevent blocking
+                        email_thread = threading.Thread(target=send_email_with_timeout)
+                        email_thread.daemon = True
+                        email_thread.start()
+                        
+                        logger.info(f"📧 Email sending initiated in background for {customer_email}")
+                        email_result = True  # Assume success for response purposes
                             
                     except Exception as email_error:
-                        logger.error(f"❌ Error sending booking confirmation email to {customer_email}: {email_error}")
+                        logger.error(f"❌ Error initiating email send for {customer_email}: {email_error}")
                         
                 else:
                     logger.warning(f"⚠️ No email address provided for booking {booking.id}")
