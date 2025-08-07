@@ -138,14 +138,14 @@
                     <a class="nav-link" href="#users" data-page="users">
                         <i class="bi bi-people"></i>
                         Users
-                        <span class="badge bg-light text-dark ms-auto">19</span>
+                        <span class="badge bg-light text-dark ms-auto">0</span>
                     </a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="#bookings" data-page="bookings">
                         <i class="bi bi-calendar-check"></i>
                         Bookings
-                        <span class="badge bg-light text-dark ms-auto">40</span>
+                        <span class="badge bg-light text-dark ms-auto">0</span>
                     </a>
                 </li>
                 <li class="nav-item">
@@ -158,7 +158,7 @@
                     <a class="nav-link" href="#vehicles" data-page="vehicles">
                         <i class="bi bi-truck"></i>
                         Vehicles
-                        <span class="badge bg-light text-dark ms-auto">87</span>
+                        <span class="badge bg-light text-dark ms-auto">0</span>
                     </a>
                 </li>
 
@@ -216,7 +216,7 @@
                         <div class="stat-card">
                             <div class="d-flex align-items-center">
                                 <div class="flex-grow-1">
-                                    <h3 class="mb-1" id="totalUsers">Loading...</h3>
+                                    <h3 class="mb-1" id="totalUsers">0</h3>
                                     <p class="mb-0">Total Users</p>
                                     <small class="opacity-75" id="newUsers">Loading...</small>
                                 </div>
@@ -229,7 +229,7 @@
                         <div class="stat-card success">
                             <div class="d-flex align-items-center">
                                 <div class="flex-grow-1">
-                                    <h3 class="mb-1" id="totalBookings">Loading...</h3>
+                                    <h3 class="mb-1" id="totalBookings">0</h3>
                                     <p class="mb-0">Total Bookings</p>
                                     <small class="opacity-75" id="todayBookings">Loading...</small>
                                 </div>
@@ -242,7 +242,7 @@
                         <div class="stat-card warning">
                             <div class="d-flex align-items-center">
                                 <div class="flex-grow-1">
-                                    <h3 class="mb-1" id="totalRevenue">Loading...</h3>
+                                    <h3 class="mb-1" id="totalRevenue">£0.00</h3>
                                     <p class="mb-0">Total Revenue</p>
                                     <small class="opacity-75" id="todayRevenue">Loading...</small>
                                 </div>
@@ -255,7 +255,7 @@
                         <div class="stat-card info">
                             <div class="d-flex align-items-center">
                                 <div class="flex-grow-1">
-                                    <h3 class="mb-1" id="totalServices">Loading...</h3>
+                                    <h3 class="mb-1" id="totalServices">0</h3>
                                     <p class="mb-0">Active Services</p>
                                     <small class="opacity-75" id="servicesChange">Loading...</small>
                                 </div>
@@ -309,7 +309,10 @@
                             </div>
                             <div class="card-body">
                                 <div class="list-group list-group-flush" id="recentBookings">
-                                    <!-- Recent bookings will be loaded here -->
+                                    <div class="list-group-item text-center text-muted">
+                                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                        Loading recent bookings...
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -323,7 +326,10 @@
                             </div>
                             <div class="card-body">
                                 <div class="list-group list-group-flush" id="recentUsers">
-                                    <!-- Recent users will be loaded here -->
+                                    <div class="list-group-item text-center text-muted">
+                                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                        Loading recent users...
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -383,7 +389,12 @@
                                     </tr>
                                 </thead>
                                 <tbody id="usersTableBody">
-                                    <!-- Users data will be loaded here -->
+                                    <tr>
+                                        <td colspan="8" class="text-center text-muted py-4">
+                                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                            Loading users data...
+                                        </td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -449,7 +460,12 @@
                                     </tr>
                                 </thead>
                                 <tbody id="bookingsTableBody">
-                                    <!-- Bookings data will be loaded here -->
+                                    <tr>
+                                        <td colspan="9" class="text-center text-muted py-4">
+                                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                            Loading bookings data...
+                                        </td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -492,7 +508,7 @@
                         <div class="card text-center">
                             <div class="card-body">
                                 <h5 class="card-title text-success">PayPal Revenue</h5>
-                                <h3 id="paypalRevenue">Loading...</h3>
+                                <h3 id="paypalRevenue">£0.00</h3>
                             </div>
                         </div>
                     </div>
@@ -500,7 +516,7 @@
                         <div class="card text-center">
                             <div class="card-body">
                                 <h5 class="card-title text-info">DVLA Revenue</h5>
-                                <h3 id="dvlaRevenue">Loading...</h3>
+                                <h3 id="dvlaRevenue">£0.00</h3>
                             </div>
                         </div>
                     </div>
@@ -508,7 +524,7 @@
                         <div class="card text-center">
                             <div class="card-body">
                                 <h5 class="card-title text-primary">Total Revenue</h5>
-                                <h3 id="totalPaymentRevenue">Loading...</h3>
+                                <h3 id="totalPaymentRevenue">£0.00</h3>
                             </div>
                         </div>
                     </div>
@@ -516,7 +532,7 @@
                         <div class="card text-center">
                             <div class="card-body">
                                 <h5 class="card-title text-warning">Today's Revenue</h5>
-                                <h3 id="todayPaymentRevenue">Loading...</h3>
+                                <h3 id="todayPaymentRevenue">£0.00</h3>
                             </div>
                         </div>
                     </div>
@@ -542,7 +558,10 @@
                                 </thead>
                                 <tbody id="paymentsTableBody">
                                     <tr>
-                                        <td colspan="6" class="text-center">Loading payments...</td>
+                                        <td colspan="6" class="text-center text-muted py-4">
+                                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                            Loading payments data...
+                                        </td>
                                     </tr>
                                 </tbody>
                             </table>

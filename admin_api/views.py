@@ -282,3 +282,23 @@ class VehiclesListView(View):
             return JsonResponse({'results': vehicles_data})
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=500)
+
+class ServiceDistributionView(View):
+    def get(self, request):
+        try:
+            # Get service distribution data
+            paypal_count = PayPalBooking.objects.count()
+            dvla_count = DVLABooking.objects.count()
+            
+            if paypal_count == 0 and dvla_count == 0:
+                return JsonResponse({
+                    'labels': ['No Data'],
+                    'values': [1]
+                })
+            
+            return JsonResponse({
+                'labels': ['PayPal Services', 'DVLA Services'],
+                'values': [paypal_count, dvla_count]
+            })
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)

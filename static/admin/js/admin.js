@@ -153,16 +153,16 @@ class AdminPanel {
         this.charts.booking = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                labels: [],
                 datasets: [{
                     label: 'PayPal Bookings',
-                    data: [12, 19, 3, 5, 2, 3],
+                    data: [],
                     borderColor: 'rgb(75, 192, 192)',
                     backgroundColor: 'rgba(75, 192, 192, 0.1)',
                     tension: 0.4
                 }, {
                     label: 'DVLA Bookings',
-                    data: [2, 3, 20, 5, 1, 4],
+                    data: [],
                     borderColor: 'rgb(255, 99, 132)',
                     backgroundColor: 'rgba(255, 99, 132, 0.1)',
                     tension: 0.4
@@ -173,7 +173,7 @@ class AdminPanel {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Booking Trends'
+                        text: 'Booking Trends (Real Data)'
                     }
                 },
                 scales: {
@@ -192,9 +192,9 @@ class AdminPanel {
         this.charts.service = new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: ['PayPal Services', 'DVLA Services'],
+                labels: [],
                 datasets: [{
-                    data: [65, 35],
+                    data: [],
                     backgroundColor: [
                         'rgba(54, 162, 235, 0.8)',
                         'rgba(255, 206, 86, 0.8)'
@@ -211,7 +211,7 @@ class AdminPanel {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Service Distribution'
+                        text: 'Service Distribution (Real Data)'
                     },
                     legend: {
                         position: 'bottom'
@@ -246,16 +246,25 @@ class AdminPanel {
             const data = await response.json();
             const bookings = (data.results || data).slice(0, 5); // Get first 5 bookings
 
-            container.innerHTML = bookings.map(booking => `
-                <div class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="mb-1">${booking.user?.first_name || 'Unknown'} ${booking.user?.last_name || 'User'}</h6>
-                        <p class="mb-1">${booking.service_type} - #${booking.id}</p>
-                        <small class="text-muted">${this.getRelativeTime(booking.created_at)}</small>
+            if (bookings.length === 0) {
+                container.innerHTML = `
+                    <div class="list-group-item text-center text-muted py-4">
+                        <i class="bi bi-calendar-x me-2"></i>
+                        No recent bookings found
                     </div>
-                    <span class="badge bg-${this.getStatusColor(booking.status)} rounded-pill">${booking.status}</span>
-                </div>
-            `).join('');
+                `;
+            } else {
+                container.innerHTML = bookings.map(booking => `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">${booking.user?.first_name || 'Unknown'} ${booking.user?.last_name || 'User'}</h6>
+                            <p class="mb-1">${booking.service_type} - #${booking.id}</p>
+                            <small class="text-muted">${this.getRelativeTime(booking.created_at)}</small>
+                        </div>
+                        <span class="badge bg-${this.getStatusColor(booking.status)} rounded-pill">${booking.status}</span>
+                    </div>
+                `).join('');
+            }
         } catch (error) {
             console.error('Error loading recent bookings:', error);
             container.innerHTML = `
@@ -284,20 +293,29 @@ class AdminPanel {
             const data = await response.json();
             const users = (data.results || data).slice(0, 5); // Get first 5 users
 
-            container.innerHTML = users.map(user => `
-                <div class="list-group-item">
-                    <div class="d-flex align-items-center">
-                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
-                            ${(user.first_name?.[0] || 'U')}${(user.last_name?.[0] || '')}
-                        </div>
-                        <div class="flex-grow-1">
-                            <h6 class="mb-1">${user.first_name || 'Unknown'} ${user.last_name || 'User'}</h6>
-                            <p class="mb-1">${user.email}</p>
-                            <small class="text-muted">${this.getRelativeTime(user.date_joined)}</small>
+            if (users.length === 0) {
+                container.innerHTML = `
+                    <div class="list-group-item text-center text-muted py-4">
+                        <i class="bi bi-people me-2"></i>
+                        No recent users found
+                    </div>
+                `;
+            } else {
+                container.innerHTML = users.map(user => `
+                    <div class="list-group-item">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                                ${(user.first_name?.[0] || 'U')}${(user.last_name?.[0] || '')}
+                            </div>
+                            <div class="flex-grow-1">
+                                <h6 class="mb-1">${user.first_name || 'Unknown'} ${user.last_name || 'User'}</h6>
+                                <p class="mb-1">${user.email}</p>
+                                <small class="text-muted">${this.getRelativeTime(user.date_joined)}</small>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `).join('');
+                `).join('');
+            }
         } catch (error) {
             console.error('Error loading recent users:', error);
             container.innerHTML = `
@@ -326,41 +344,52 @@ class AdminPanel {
             const data = await response.json();
             const users = data.results || data;
 
-            tbody.innerHTML = users.map(user => {
-                const fullName = `${user.first_name || 'Unknown'} ${user.last_name || 'User'}`;
-                const initials = `${user.first_name?.[0] || 'U'}${user.last_name?.[0] || ''}`;
-                const userType = user.is_staff ? 'staff' : 'customer';
-                const status = user.is_active ? 'active' : 'inactive';
-                
-                return `
+            if (users.length === 0) {
+                tbody.innerHTML = `
                     <tr>
-                        <td><input type="checkbox" class="form-check-input" value="${user.id}"></td>
-                        <td>
-                            <div class="d-flex align-items-center">
-                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px; font-size: 0.75rem;">
-                                    ${initials}
-                                </div>
-                                ${fullName}
-                            </div>
-                        </td>
-                        <td>${user.email}</td>
-                        <td><span class="badge bg-${status === 'active' ? 'success' : 'secondary'}">${status}</span></td>
-                        <td><span class="badge bg-${userType === 'staff' ? 'primary' : 'info'}">${userType}</span></td>
-                        <td>${new Date(user.date_joined).toLocaleDateString()}</td>
-                        <td>${user.booking_count || 0}</td>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-primary" onclick="editUser(${user.id})">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                                <button class="btn btn-outline-danger" onclick="deleteUser(${user.id})">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </div>
+                        <td colspan="8" class="text-center text-muted py-4">
+                            <i class="bi bi-people me-2"></i>
+                            No users found in the database
                         </td>
                     </tr>
                 `;
-            }).join('');
+            } else {
+                tbody.innerHTML = users.map(user => {
+                    const fullName = `${user.first_name || 'Unknown'} ${user.last_name || 'User'}`;
+                    const initials = `${user.first_name?.[0] || 'U'}${user.last_name?.[0] || ''}`;
+                    const userType = user.is_staff ? 'staff' : 'customer';
+                    const status = user.is_active ? 'active' : 'inactive';
+                    
+                    return `
+                        <tr>
+                            <td><input type="checkbox" class="form-check-input" value="${user.id}"></td>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px; font-size: 0.75rem;">
+                                        ${initials}
+                                    </div>
+                                    ${fullName}
+                                </div>
+                            </td>
+                            <td>${user.email}</td>
+                            <td><span class="badge bg-${status === 'active' ? 'success' : 'secondary'}">${status}</span></td>
+                            <td><span class="badge bg-${userType === 'staff' ? 'primary' : 'info'}">${userType}</span></td>
+                            <td>${new Date(user.date_joined).toLocaleDateString()}</td>
+                            <td>${user.booking_count || 0}</td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" onclick="editUser(${user.id})">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger" onclick="deleteUser(${user.id})">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
         } catch (error) {
             console.error('Error loading users:', error);
             tbody.innerHTML = `
@@ -391,40 +420,51 @@ class AdminPanel {
             const data = await response.json();
             const bookings = data.results || data;
 
-            tbody.innerHTML = bookings.map(booking => {
-                const customerName = booking.user ? 
-                    `${booking.user.first_name || 'Unknown'} ${booking.user.last_name || 'User'}` : 
-                    'Unknown Customer';
-                
-                const bookingDate = booking.booking_date ? 
-                    new Date(booking.booking_date).toLocaleDateString() : 
-                    'Not set';
-                
-                const bookingTime = booking.booking_time || 'Not set';
-                
-                return `
+            if (bookings.length === 0) {
+                tbody.innerHTML = `
                     <tr>
-                        <td><input type="checkbox" class="form-check-input" value="${booking.id}"></td>
-                        <td>#${booking.id}</td>
-                        <td>${customerName}</td>
-                        <td>${booking.service_type || 'Unknown Service'}</td>
-                        <td>${bookingDate} ${bookingTime}</td>
-                        <td><span class="badge bg-${this.getStatusColor(booking.status)}">${booking.status}</span></td>
-                        <td><span class="badge bg-${booking.payment_status === 'completed' ? 'success' : 'warning'}">${booking.payment_status || 'pending'}</span></td>
-                        <td>£${(booking.amount || 0).toFixed(2)}</td>
-                        <td>
-                            <div class="btn-group btn-group-sm">
-                                <button class="btn btn-outline-primary" onclick="editBooking('${booking.id}')">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                                <button class="btn btn-outline-danger" onclick="deleteBooking('${booking.id}')">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </div>
+                        <td colspan="9" class="text-center text-muted py-4">
+                            <i class="bi bi-calendar-x me-2"></i>
+                            No bookings found in the database
                         </td>
                     </tr>
                 `;
-            }).join('');
+            } else {
+                tbody.innerHTML = bookings.map(booking => {
+                    const customerName = booking.user ? 
+                        `${booking.user.first_name || 'Unknown'} ${booking.user.last_name || 'User'}` : 
+                        'Unknown Customer';
+                    
+                    const bookingDate = booking.booking_date ? 
+                        new Date(booking.booking_date).toLocaleDateString() : 
+                        'Not set';
+                    
+                    const bookingTime = booking.booking_time || 'Not set';
+                    
+                    return `
+                        <tr>
+                            <td><input type="checkbox" class="form-check-input" value="${booking.id}"></td>
+                            <td>#${booking.id}</td>
+                            <td>${customerName}</td>
+                            <td>${booking.service_type || 'Unknown Service'}</td>
+                            <td>${bookingDate} ${bookingTime}</td>
+                            <td><span class="badge bg-${this.getStatusColor(booking.status)}">${booking.status}</span></td>
+                            <td><span class="badge bg-${booking.payment_status === 'completed' ? 'success' : 'warning'}">${booking.payment_status || 'pending'}</span></td>
+                            <td>£${(booking.amount || 0).toFixed(2)}</td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" onclick="editBooking('${booking.id}')">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger" onclick="deleteBooking('${booking.id}')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
         } catch (error) {
             console.error('Error loading bookings:', error);
             tbody.innerHTML = `
@@ -535,11 +575,15 @@ class AdminPanel {
 
         } catch (error) {
             console.error('Error loading dashboard stats:', error);
-            // Set error state
-            document.getElementById('totalUsers').textContent = 'Error';
-            document.getElementById('totalBookings').textContent = 'Error';
-            document.getElementById('totalRevenue').textContent = 'Error';
-            document.getElementById('totalServices').textContent = 'Error';
+            // Set error state with better messaging
+            document.getElementById('totalUsers').textContent = '0';
+            document.getElementById('newUsers').textContent = 'No data available';
+            document.getElementById('totalBookings').textContent = '0';
+            document.getElementById('todayBookings').textContent = 'No data available';
+            document.getElementById('totalRevenue').textContent = '£0.00';
+            document.getElementById('todayRevenue').textContent = 'No data available';
+            document.getElementById('totalServices').textContent = '0';
+            document.getElementById('servicesChange').textContent = 'No data available';
         }
     }
 
@@ -616,18 +660,31 @@ class AdminPanel {
     }
 
     updateBookingChart(data) {
-        if (this.charts.booking && data.labels && data.paypal_data && data.dvla_data) {
-            this.charts.booking.data.labels = data.labels;
-            this.charts.booking.data.datasets[0].data = data.paypal_data;
-            this.charts.booking.data.datasets[1].data = data.dvla_data;
+        if (this.charts.booking) {
+            if (data.labels && data.paypal_data && data.dvla_data) {
+                this.charts.booking.data.labels = data.labels;
+                this.charts.booking.data.datasets[0].data = data.paypal_data;
+                this.charts.booking.data.datasets[1].data = data.dvla_data;
+            } else {
+                // Show empty state
+                this.charts.booking.data.labels = ['No Data'];
+                this.charts.booking.data.datasets[0].data = [0];
+                this.charts.booking.data.datasets[1].data = [0];
+            }
             this.charts.booking.update();
         }
     }
 
     updateServiceChart(data) {
-        if (this.charts.service && data.labels && data.values) {
-            this.charts.service.data.labels = data.labels;
-            this.charts.service.data.datasets[0].data = data.values;
+        if (this.charts.service) {
+            if (data.labels && data.values && data.values.length > 0) {
+                this.charts.service.data.labels = data.labels;
+                this.charts.service.data.datasets[0].data = data.values;
+            } else {
+                // Show empty state
+                this.charts.service.data.labels = ['No Data'];
+                this.charts.service.data.datasets[0].data = [1];
+            }
             this.charts.service.update();
         }
     }
@@ -660,22 +717,33 @@ class AdminPanel {
                 
                 const tbody = document.getElementById('paymentsTableBody');
                 if (tbody) {
-                    tbody.innerHTML = bookings.map(booking => {
-                        const customerName = booking.user ? 
-                            `${booking.user.first_name || 'Unknown'} ${booking.user.last_name || 'User'}` : 
-                            'Unknown Customer';
-                        
-                        return `
+                    if (bookings.length === 0) {
+                        tbody.innerHTML = `
                             <tr>
-                                <td>#${booking.id}</td>
-                                <td>${customerName}</td>
-                                <td><span class="badge bg-${booking.type === 'paypal' ? 'primary' : 'info'}">${booking.service_type}</span></td>
-                                <td>£${(booking.amount || 0).toFixed(2)}</td>
-                                <td><span class="badge bg-success">Completed</span></td>
-                                <td>${new Date(booking.created_at).toLocaleDateString()}</td>
+                                <td colspan="6" class="text-center text-muted py-4">
+                                    <i class="bi bi-credit-card me-2"></i>
+                                    No completed payments found
+                                </td>
                             </tr>
                         `;
-                    }).join('');
+                    } else {
+                        tbody.innerHTML = bookings.map(booking => {
+                            const customerName = booking.user ? 
+                                `${booking.user.first_name || 'Unknown'} ${booking.user.last_name || 'User'}` : 
+                                'Unknown Customer';
+                            
+                            return `
+                                <tr>
+                                    <td>#${booking.id}</td>
+                                    <td>${customerName}</td>
+                                    <td><span class="badge bg-${booking.type === 'paypal' ? 'primary' : 'info'}">${booking.service_type}</span></td>
+                                    <td>£${(booking.amount || 0).toFixed(2)}</td>
+                                    <td><span class="badge bg-success">Completed</span></td>
+                                    <td>${new Date(booking.created_at).toLocaleDateString()}</td>
+                                </tr>
+                            `;
+                        }).join('');
+                    }
                 }
             }
 
