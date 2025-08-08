@@ -56,4 +56,5 @@ class Booking(models.Model):
     updated = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Booking: {self.service.name} on {self.date} for {self.user.username}"
+        user_info = self.user.username if self.user else "Anonymous"
+        return f"Booking: {self.service.name} on {self.date} for {user_info}"

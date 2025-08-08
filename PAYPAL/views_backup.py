@@ -39,41 +39,32 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        # Allow authenticated users to see their bookings
-        if self.request.user.is_authenticated:
-            try:
-                logger.info(f"Fetching bookings for authenticated user {self.request.user.id}")
-                queryset = Booking.objects.filter(user=self.request.user).order_by('-created')
-                logger.info(f"Found {queryset.count()} bookings for user {self.request.user.id}")
-                return queryset
-            except Exception as e:
-                logger.error(f"Error fetching bookings for user {self.request.user.id}: {e}")
-                return Booking.objects.none()
-        
-        # Allow anonymous users to see bookings by providing email
-        email = self.request.query_params.get('email')
-        if email:
-            try:
-                logger.info(f"Fetching bookings for email {email}")
-                queryset = Booking.objects.filter(customer_email=email).order_by('-created')
-                logger.info(f"Found {queryset.count()} bookings for email {email}")
-                return queryset
-            except Exception as e:
-                logger.error(f"Error fetching bookings for email {email}: {e}")
-                return Booking.objects.none()
-        
-        # If no email provided and not authenticated, return empty queryset
-        return Booking.objects.none()
+        # Only return bookings if user is authenticated (for listing)
+        if not self.request.user.is_authenticated:
+            return Booking.objects.none()
+            
+        try:
+            logger.info(f"Fetching bookings for user {self.request.user.id}")
+            queryset = Booking.objects.filter(user=self.request.user).order_by('-created')
+            logger.info(f"Found {queryset.count()} bookings for user {self.request.user.id}")
+            return queryset
+        except Exception as e:
+            logger.error(f"Error fetching bookings for user {self.request.user.id}: {e}")
+            return Booking.objects.none()
     
     def list(self, request, *args, **kwargs):
         """Override list to provide better error handling"""
+        if not request.user.is_authenticated:
+            return Response(
+                {'error': 'Authentication required to list bookings.'}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+            
         try:
-            user_info = f"user {request.user.id}" if request.user.is_authenticated else "anonymous user"
-            logger.info(f"Booking list request from {user_info}")
+            logger.info(f"Booking list request from user {request.user.id}")
             return super().list(request, *args, **kwargs)
         except Exception as e:
-            user_info = f"user {request.user.id}" if request.user.is_authenticated else "anonymous user"
-            logger.error(f"Error in booking list for {user_info}: {e}")
+            logger.error(f"Error in booking list for user {request.user.id}: {e}")
             return Response(
                 {'error': 'An error occurred while fetching bookings. Please try again.'}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -285,65 +276,119 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
                                 if email_result:
                                     logger.info(f"✅ Booking confirmation email sent successfully to {customer_email}")
                                 else:
-                                    logger.warning(f"⚠️ Email sending returned False for {customer_email}")
+                                    logger.error(f"❌ Booking confirmation email failed to send to {customer_email} (result: {email_result})")
                                     
-                                return email_result
-                                
-                            except Exception as e:
-                                logger.error(f"❌ Failed to send booking confirmation email: {e}")
-                                return False
+                            except Exception as email_error:
+                                logger.error(f"❌ Error sending booking confirmation email to {customer_email}: {email_error}")
                         
-                        # Run email sending in a separate thread with timeout
+                        # Send email in background thread to prevent blocking
                         email_thread = threading.Thread(target=send_email_with_timeout)
                         email_thread.daemon = True
                         email_thread.start()
-                        email_thread.join(timeout=10)  # 10 second timeout
                         
-                        if email_thread.is_alive():
-                            logger.warning(f"⚠️ Email sending timed out for booking {booking.id}")
-                        
-                    except Exception as e:
-                        logger.error(f"❌ Error in email preparation for booking {booking.id}: {e}")
+                        logger.info(f"📧 Email sending initiated in background for {customer_email}")
+                        email_result = True  # Assume success for response purposes
+                            
+                    except Exception as email_error:
+                        logger.error(f"❌ Error initiating email send for {customer_email}: {email_error}")
                         
                 else:
-                    logger.warning(f"⚠️ No customer email provided for booking {booking.id}")
-                    
+                    logger.warning(f"⚠️ No email address provided for booking {booking.id}")
             except Exception as e:
-                logger.error(f"❌ Unexpected error in email handling for booking {booking.id}: {e}")
+                logger.error(f"❌ Failed to send confirmation email for booking {booking.id}: {e}")
 
-            # Schedule reminder email (24 hours before appointment)
+            # Schedule reminder email 24 hours before the booking
             try:
-                if CELERY_AVAILABLE:
-                    # Calculate when to send reminder (24 hours before appointment)
-                    appointment_datetime = datetime.combine(booking.date, datetime.strptime(booking.time, '%H:%M').time())
-                    reminder_datetime = appointment_datetime - timedelta(hours=24)
+                if customer_email:
+                    booking_datetime = datetime.combine(booking.date, datetime.strptime(booking.time, '%H:%M').time())
+                    booking_datetime = timezone.make_aware(booking_datetime)
+                    reminder_time = booking_datetime - timedelta(hours=24)
+                    
+                    logger.info(f"Booking datetime: {booking_datetime}, Reminder time: {reminder_time}, Current time: {timezone.now()}")
                     
                     # Only schedule if reminder time is in the future
-                    if reminder_datetime > datetime.now():
-                        send_booking_reminder.apply_async(
-                            args=[booking.id],
-                            eta=reminder_datetime
-                        )
-                        logger.info(f"📅 Reminder scheduled for booking {booking.id} at {reminder_datetime}")
+                    if reminder_time > timezone.now():
+                        try:
+                            from email_service.models import BookingReminder
+                            booking_details = {
+                                'service_name': booking.service.name,
+                                'mot_class': booking.mot_class if booking.mot_class else None,
+                                'price': float(booking.payment_amount) if booking.payment_amount else 0,
+                                'quantity': quantity,
+                                'date': str(booking.date),
+                                'time': booking.time,
+                                'vehicle_registration': booking.vehicle_registration
+                            }
+                            
+                            logger.info(f"Creating booking reminder for {customer_email}")
+                            booking_reminder = BookingReminder.objects.create(
+                                email=customer_email,
+                                booking_details=booking_details,
+                                appointment_datetime=booking_datetime,
+                                booking_url=f"https://www.access-auto-services.co.uk/booking",
+                                scheduled_for=reminder_time
+                            )
+                            logger.info(f"Booking reminder created with ID: {booking_reminder.id}")
+                            
+                            # Schedule with Celery if available
+                            if CELERY_AVAILABLE:
+                                try:
+                                    # Test Redis connection first
+                                    from django.core.cache import cache
+                                    cache.get('test_key')  # This will fail if Redis is not available
+                                    
+                                    from email_service.tasks import send_reminder_email_task
+                                    send_reminder_email_task.apply_async(
+                                        args=[booking_reminder.id],
+                                        eta=reminder_time
+                                    )
+                                    logger.info(f"✅ Reminder scheduled with Celery for booking {booking.id} at {reminder_time}")
+                                except Exception as celery_error:
+                                    logger.warning(f"⚠️ Celery/Redis not available ({celery_error}). Reminder created but not scheduled for booking {booking.id}")
+                            else:
+                                logger.info(f"⚠️ Celery not available, reminder created but not scheduled for booking {booking.id}")
+                                
+                        except Exception as e:
+                            logger.error(f"❌ Failed to create booking reminder: {e}")
+                            # Fallback to old method
+                            try:
+                                if CELERY_AVAILABLE:
+                                    try:
+                                        # Test Redis connection first
+                                        from django.core.cache import cache
+                                        cache.get('test_key')  # This will fail if Redis is not available
+                                        
+                                        send_booking_reminder.apply_async(
+                                            args=[booking.id],
+                                            eta=reminder_time
+                                        )
+                                        logger.info(f"✅ Fallback reminder scheduled for booking {booking.id}")
+                                    except Exception as fallback_celery_error:
+                                        logger.warning(f"⚠️ Fallback Celery/Redis also not available ({fallback_celery_error}). Booking created without reminder scheduling.")
+                            except Exception as fallback_error:
+                                logger.warning(f"⚠️ Fallback reminder scheduling failed: {fallback_error}")
                     else:
-                        logger.info(f"⏰ Appointment too soon for reminder - booking {booking.id}")
+                        logger.info(f"⚠️ Booking {booking.id} is too soon for reminder scheduling (reminder time: {reminder_time})")
                 else:
-                    logger.info(f"📧 Celery not available - no reminder scheduled for booking {booking.id}")
+                    logger.warning(f"⚠️ No email provided for booking {booking.id}, skipping reminder scheduling")
                     
             except Exception as e:
+                # Log the error but don't fail the booking creation
                 logger.error(f"❌ Failed to schedule reminder for booking {booking.id}: {e}")
-
+                
         except Exception as e:
-            logger.error(f"❌ Error in perform_create: {e}")
+            logger.error(f"Error creating booking: {e}")
             raise
 
 
 class BookingVerifyAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
-    def post(self, request, token):
+    def get(self, request, token):
         try:
             booking = Booking.objects.get(verification_token=token)
+            if booking.is_verified:
+                return Response({'message': 'Booking already verified.'}, status=200)
             booking.is_verified = True
             booking.save()
             return Response({'message': 'Booking successfully verified.'}, status=200)
@@ -353,11 +398,10 @@ class BookingVerifyAPIView(APIView):
 
 class BookingDebugAPIView(APIView):
     """Debug endpoint to test booking data structure"""
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
     
     def post(self, request):
-        user_info = f"user {request.user.id}" if request.user.is_authenticated else "anonymous user"
-        logger.info(f"Debug booking request from {user_info}")
+        logger.info(f"Debug booking request from user {request.user.id}")
         logger.info(f"Request data: {request.data}")
         
         # Check required fields
@@ -386,32 +430,24 @@ class BookingDebugAPIView(APIView):
         
         return Response({
             'message': 'Debug successful',
-            'user': request.user.username if request.user.is_authenticated else 'anonymous',
+            'user': request.user.username,
             'service': service.name,
             'received_data': request.data
         })
 
      
 class PaymentCaptureAPIView(APIView):
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         booking_id = request.data.get('booking_id')
         paypal_order_id = request.data.get('paypal_order_id')
-        customer_email = request.data.get('customer_email')  # For anonymous users
 
         if not booking_id or not paypal_order_id:
             return Response({"error": "Missing booking_id or paypal_order_id"}, status=400)
 
         try:
-            # For authenticated users, filter by user
-            if request.user.is_authenticated:
-                booking = Booking.objects.get(id=booking_id, user=request.user)
-            else:
-                # For anonymous users, require email verification
-                if not customer_email:
-                    return Response({"error": "Email required for anonymous payment"}, status=400)
-                booking = Booking.objects.get(id=booking_id, customer_email=customer_email)
+            booking = Booking.objects.get(id=booking_id, user=request.user)
         except Booking.DoesNotExist:
             return Response({"error": "Booking not found"}, status=404)
 
@@ -481,24 +517,16 @@ class PaymentCaptureAPIView(APIView):
 
 class PayPalCreateOrderAPIView(APIView):
     """Create PayPal order for booking payment"""
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         booking_id = request.data.get('booking_id')
-        customer_email = request.data.get('customer_email')  # For anonymous users
         
         if not booking_id:
             return Response({"error": "Missing booking_id"}, status=400)
 
         try:
-            # For authenticated users, filter by user
-            if request.user.is_authenticated:
-                booking = Booking.objects.get(id=booking_id, user=request.user)
-            else:
-                # For anonymous users, require email verification
-                if not customer_email:
-                    return Response({"error": "Email required for anonymous payment"}, status=400)
-                booking = Booking.objects.get(id=booking_id, customer_email=customer_email)
+            booking = Booking.objects.get(id=booking_id, user=request.user)
         except Booking.DoesNotExist:
             return Response({"error": "Booking not found"}, status=404)
 

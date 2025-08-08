@@ -36,7 +36,11 @@ class BookingSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user = self.context['request'].user
-        validated_data['user'] = user
+        # Only assign user if they are authenticated, otherwise allow null
+        if user.is_authenticated:
+            validated_data['user'] = user
+        else:
+            validated_data['user'] = None
         return super().create(validated_data)
 
     def update(self, instance, validated_data):

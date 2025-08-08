@@ -30,7 +30,7 @@ class Booking(models.Model):
         ('cancelled', 'Cancelled'),
     ]
 
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='dvlaa_bookings')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='dvlaa_bookings', null=True, blank=True)
     service = models.ForeignKey(Service, on_delete=models.PROTECT, related_name='dvlaa_bookings')
     quantity = models.PositiveIntegerField(default=1)
     motClass = models.CharField(max_length=100, blank=True, null=True)
@@ -40,6 +40,14 @@ class Booking(models.Model):
     payment_method = models.CharField(max_length=20, blank=True, null=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Customer information for anonymous bookings
+    customer_email = models.EmailField(blank=True, null=True)
+    customer_first_name = models.CharField(max_length=64, blank=True, null=True)
+    customer_last_name = models.CharField(max_length=64, blank=True, null=True)
+    customer_phone = models.CharField(max_length=32, blank=True, null=True)
+    customer_address = models.TextField(blank=True, null=True)
 
     def __str__(self):
-        return f"Booking #{self.id} - {self.service.name} for {self.user}"
+        user_info = self.user.username if self.user else "Anonymous"
+        return f"Booking #{self.id} - {self.service.name} for {user_info}"
