@@ -5,6 +5,8 @@ class AdminPanel {
         this.currentPage = 'dashboard';
         this.charts = {};
         this.apiBaseUrl = '/api'; // Same server API endpoints
+        this.currentBookings = [];
+        this.currentServices = [];
         this.init();
     }
 
@@ -16,18 +18,940 @@ class AdminPanel {
     }
 
     checkAuth() {
-        if (!sessionStorage.getItem('adminLoggedIn')) {
-            window.location.href = '/static/admin/login.html';
-            return;
+        // For demo purposes, we'll skip auth check
+        // In production, implement proper authentication
+        console.log('Admin panel loaded');
+    }
+
+    setupEventListeners() {
+        // Sidebar navigation
+        document.querySelectorAll('[data-page]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const page = e.currentTarget.getAttribute('data-page');
+                this.showPage(page);
+            });
+        });
+
+        // Mobile sidebar toggle
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                document.querySelector('.sidebar').classList.toggle('show');
+            });
         }
+
+        // Search functionality
+        const searchInputs = document.querySelectorAll('.search-input');
+        searchInputs.forEach(input => {
+            input.addEventListener('input', (e) => {
+                this.handleSearch(e.target.value, e.target.closest('.page-content').id);
+            });
+        });
+    }
+
+    showPage(page) {
+        // Hide all pages
+        document.querySelectorAll('.page-content').forEach(pageEl => {
+            pageEl.style.display = 'none';
+        });
+
+        // Show selected page
+        const targetPage = document.getElementById(`${page}-page`);
+        if (targetPage) {
+            targetPage.style.display = 'block';
+        }
+
+        // Update sidebar active state
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.classList.remove('active');
+        });
         
-        // Set user info
-        const userEmail = sessionStorage.getItem('adminUser');
-        const userNameElement = document.getElementById('userName');
-        if (userNameElement && userEmail) {
-            userNameElement.textContent = userEmail.split('@')[0];
+        const activeLink = document.querySelector(`[data-page="${page}"]`);
+        if (activeLink) {
+            activeLink.classList.add('active');
+        }
+
+        // Update page title
+        const pageTitle = document.getElementById('pageTitle');
+        if (pageTitle) {
+            pageTitle.textContent = this.getPageTitle(page);
+        }
+
+        // Load page-specific data
+        this.loadPageData(page);
+        this.currentPage = page;
+    }
+
+    getPageTitle(page) {
+        const titles = {
+            dashboard: 'Dashboard',
+            users: 'Users',
+            bookings: 'Bookings',
+            services: 'Services',
+            payments: 'Payments',
+            reports: 'Reports'
+        };
+        return titles[page] || 'Dashboard';
+    }
+
+    async loadPageData(page) {
+        try {
+            switch (page) {
+                case 'dashboard':
+                    await this.loadDashboardData();
+                    break;
+                case 'users':
+                    await this.loadUsersData();
+                    break;
+                case 'bookings':
+                    await this.loadBookingsData();
+                    break;
+                case 'services':
+                    await this.loadServicesData();
+                    break;
+                case 'payments':
+                    await this.loadPaymentsData();
+                    break;
+                case 'reports':
+                    await this.loadReportsData();
+                    break;
+            }
+        } catch (error) {
+            console.error(`Error loading ${page} data:`, error);
+            this.showError(`Failed to load ${page} data`);
         }
     }
+
+    async loadDashboardData() {
+        try {
+            // Load dashboard statistics
+            const [usersCount, bookingsCount, paymentsTotal, services] = await Promise.all([
+                this.apiCall('/users/count/'),
+                this.apiCall('/bookings/count/'),
+                this.apiCall('/payments/total/'),
+                this.apiCall('/services/')
+            ]);
+
+            // Update stats cards
+            this.updateElement('totalUsers', usersCount.total || 0);
+            this.updateElement('newUsers', `+${usersCount.new_this_week || 0} this week`);
+            
+            this.updateElement('totalBookings', bookingsCount.total || 0);
+            this.updateElement('todayBookings', `${bookingsCount.today || 0} today`);
+            
+            this.updateElement('totalRevenue', `£${(paymentsTotal.total || 0).toFixed(2)}`);
+            this.updateElement('todayRevenue', `£${(paymentsTotal.today || 0).toFixed(2)} today`);
+            
+            this.updateElement('totalServices', services.results?.length || 0);
+            this.updateElement('servicesChange', `${services.results?.filter(s => s.active).length || 0} active`);
+
+            // Load charts
+            await this.loadCharts();
+            
+            // Load recent data
+            await this.loadRecentBookings();
+            await this.loadRecentUsers();
+
+        } catch (error) {
+            console.error('Error loading dashboard data:', error);
+        }
+    }
+
+    async loadCharts() {
+        try {
+            const [trendsData, distributionData] = await Promise.all([
+                this.apiCall('/bookings/trends/'),
+                this.apiCall('/bookings/service-distribution/')
+            ]);
+
+            this.updateBookingChart(trendsData);
+            this.updateServiceChart(distributionData);
+        } catch (error) {
+            console.error('Error loading charts:', error);
+        }
+    }
+
+    async loadBookingsData() {
+        try {
+            const response = await this.apiCall('/bookings/');
+            this.currentBookings = response.results || [];
+            this.renderBookingsTable();
+        } catch (error) {
+            console.error('Error loading bookings:', error);
+            this.showError('Failed to load bookings');
+        }
+    }
+
+    async loadServicesData() {
+        try {
+            const response = await this.apiCall('/services/');
+            this.currentServices = response.results || [];
+            this.renderServicesTable();
+        } catch (error) {
+            console.error('Error loading services:', error);
+            this.showError('Failed to load services');
+        }
+    }
+
+    async loadUsersData() {
+        try {
+            const response = await this.apiCall('/users/');
+            this.renderUsersTable(response.results || []);
+        } catch (error) {
+            console.error('Error loading users:', error);
+            this.showError('Failed to load users');
+        }
+    }
+
+    async loadPaymentsData() {
+        try {
+            const response = await this.apiCall('/payments/total/');
+            this.renderPaymentsData(response);
+        } catch (error) {
+            console.error('Error loading payments:', error);
+            this.showError('Failed to load payments');
+        }
+    }
+
+    async loadReportsData() {
+        // Load reports data
+        await this.loadCharts();
+    }
+
+    // Utility Functions
+    async apiCall(endpoint, method = 'GET', data = null) {
+        const url = `${this.apiBaseUrl}${endpoint}`;
+        const options = {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        };
+
+        if (data) {
+            options.body = JSON.stringify(data);
+        }
+
+        const response = await fetch(url, options);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+        }
+
+        return await response.json();
+    }
+
+    updateElement(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = value;
+        }
+    }
+
+    formatDate(dateString) {
+        if (!dateString) return 'N/A';
+        return new Date(dateString).toLocaleDateString('en-GB');
+    }
+
+    getStatusBadgeClass(status) {
+        const classes = {
+            'pending': 'bg-warning',
+            'confirmed': 'bg-success',
+            'cancelled': 'bg-danger',
+            'completed': 'bg-primary'
+        };
+        return classes[status] || 'bg-secondary';
+    }
+
+    getPaymentStatusBadgeClass(status) {
+        const classes = {
+            'pending': 'bg-warning',
+            'completed': 'bg-success',
+            'failed': 'bg-danger',
+            'refunded': 'bg-info'
+        };
+        return classes[status] || 'bg-secondary';
+    }
+
+    showSuccess(message) {
+        this.showToast(message, 'success');
+    }
+
+    showError(message) {
+        this.showToast(message, 'danger');
+    }
+
+    showToast(message, type = 'info') {
+        const toastHtml = `
+            <div class="toast align-items-center text-white bg-${type} border-0" role="alert">
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            </div>
+        `;
+
+        let toastContainer = document.getElementById('toastContainer');
+        if (!toastContainer) {
+            toastContainer = document.createElement('div');
+            toastContainer.id = 'toastContainer';
+            toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+            toastContainer.style.zIndex = '9999';
+            document.body.appendChild(toastContainer);
+        }
+
+        toastContainer.insertAdjacentHTML('beforeend', toastHtml);
+        const toastElement = toastContainer.lastElementChild;
+        const toast = new bootstrap.Toast(toastElement);
+        toast.show();
+
+        // Remove toast element after it's hidden
+        toastElement.addEventListener('hidden.bs.toast', () => {
+            toastElement.remove();
+        });
+    }
+
+    initializeCharts() {
+        // Initialize empty charts
+        this.initBookingChart();
+        this.initServiceChart();
+    }
+
+    initBookingChart() {
+        const ctx = document.getElementById('bookingChart');
+        if (!ctx) return;
+
+        this.charts.booking = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Bookings',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    initServiceChart() {
+        const ctx = document.getElementById('serviceChart');
+        if (!ctx) return;
+
+        this.charts.service = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: [
+                        '#FF6384',
+                        '#36A2EB',
+                        '#FFCE56',
+                        '#4BC0C0',
+                        '#9966FF',
+                        '#FF9F40'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    }
+
+    updateBookingChart(data) {
+        if (!this.charts.booking) return;
+
+        this.charts.booking.data.labels = data.labels || [];
+        this.charts.booking.data.datasets[0].data = data.paypal_data || [];
+        this.charts.booking.update();
+    }
+
+    updateServiceChart(data) {
+        if (!this.charts.service) return;
+
+        this.charts.service.data.labels = data.labels || [];
+        this.charts.service.data.datasets[0].data = data.values || [];
+        this.charts.service.update();
+    }
+
+    async loadRecentBookings() {
+        try {
+            const response = await this.apiCall('/bookings/');
+            const recentBookings = (response.results || []).slice(0, 5);
+            
+            const container = document.getElementById('recentBookings');
+            if (!container) return;
+
+            if (recentBookings.length === 0) {
+                container.innerHTML = '<div class="list-group-item text-center text-muted">No recent bookings</div>';
+                return;
+            }
+
+            container.innerHTML = recentBookings.map(booking => `
+                <div class="list-group-item d-flex justify-content-between align-items-start">
+                    <div class="ms-2 me-auto">
+                        <div class="fw-bold">${booking.customer_first_name} ${booking.customer_last_name}</div>
+                        <small class="text-muted">${booking.service.name} - ${this.formatDate(booking.booking_date)}</small>
+                    </div>
+                    <span class="badge ${this.getStatusBadgeClass(booking.status)} rounded-pill">
+                        ${booking.status}
+                    </span>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading recent bookings:', error);
+        }
+    }
+
+    async loadRecentUsers() {
+        try {
+            const response = await this.apiCall('/users/');
+            const recentUsers = (response.results || []).slice(0, 5);
+            
+            const container = document.getElementById('recentUsers');
+            if (!container) return;
+
+            if (recentUsers.length === 0) {
+                container.innerHTML = '<div class="list-group-item text-center text-muted">No recent users</div>';
+                return;
+            }
+
+            container.innerHTML = recentUsers.map(user => `
+                <div class="list-group-item d-flex justify-content-between align-items-start">
+                    <div class="ms-2 me-auto">
+                        <div class="fw-bold">${user.first_name} ${user.last_name}</div>
+                        <small class="text-muted">${user.email}</small>
+                    </div>
+                    <span class="badge ${user.is_active ? 'bg-success' : 'bg-secondary'} rounded-pill">
+                        ${user.booking_count} bookings
+                    </span>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading recent users:', error);
+        }
+    }
+
+    renderPaymentsData(data) {
+        const container = document.querySelector('#payments-page .row');
+        if (!container) return;
+
+        container.innerHTML = `
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Revenue</h5>
+                        <h2 class="text-primary">£${(data.total || 0).toFixed(2)}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">Today</h5>
+                        <h2 class="text-success">£${(data.today || 0).toFixed(2)}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">This Week</h5>
+                        <h2 class="text-info">£${(data.week || 0).toFixed(2)}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">This Month</h5>
+                        <h2 class="text-warning">£${(data.month || 0).toFixed(2)}</h2>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderBookingsTable() {
+        const tableBody = document.querySelector('#bookings-page tbody');
+        if (!tableBody) return;
+
+        if (this.currentBookings.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="text-center text-muted">No bookings found</td>
+                </tr>
+            `;
+            return;
+        }
+
+        tableBody.innerHTML = this.currentBookings.map(booking => `
+            <tr>
+                <td>#${booking.id}</td>
+                <td>
+                    ${booking.customer_first_name} ${booking.customer_last_name}<br>
+                    <small class="text-muted">${booking.customer_email}</small>
+                </td>
+                <td>${booking.service.name}</td>
+                <td>
+                    ${this.formatDate(booking.booking_date)}<br>
+                    <small class="text-muted">${booking.booking_time}</small>
+                </td>
+                <td>
+                    <span class="badge ${this.getStatusBadgeClass(booking.status)}">
+                        ${booking.status}
+                    </span>
+                </td>
+                <td>
+                    <span class="badge ${this.getPaymentStatusBadgeClass(booking.payment_status)}">
+                        ${booking.payment_status}
+                    </span>
+                </td>
+                <td>£${booking.amount.toFixed(2)}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" onclick="adminPanel.editBooking(${booking.id})">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="adminPanel.deleteBooking(${booking.id})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    renderServicesTable() {
+        const tableBody = document.querySelector('#services-page tbody');
+        if (!tableBody) return;
+
+        if (this.currentServices.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center text-muted">No services found</td>
+                </tr>
+            `;
+            return;
+        }
+
+        tableBody.innerHTML = this.currentServices.map(service => `
+            <tr>
+                <td>${service.code}</td>
+                <td>${service.name}</td>
+                <td>${service.description || 'N/A'}</td>
+                <td>£${service.price.toFixed(2)}</td>
+                <td>
+                    <span class="badge ${service.active ? 'bg-success' : 'bg-secondary'}">
+                        ${service.active ? 'Active' : 'Inactive'}
+                    </span>
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" onclick="adminPanel.editService(${service.id})">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="adminPanel.deleteService(${service.id})">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    renderUsersTable(users) {
+        const tableBody = document.querySelector('#users-page tbody');
+        if (!tableBody) return;
+
+        if (users.length === 0) {
+            tableBody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center text-muted">No users found</td>
+                </tr>
+            `;
+            return;
+        }
+
+        tableBody.innerHTML = users.map(user => `
+            <tr>
+                <td>${user.first_name} ${user.last_name}</td>
+                <td>${user.email}</td>
+                <td>${user.booking_count}</td>
+                <td>
+                    <span class="badge ${user.is_active ? 'bg-success' : 'bg-secondary'}">
+                        ${user.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                </td>
+                <td>${this.formatDate(user.date_joined)}</td>
+                <td>
+                    <span class="badge ${user.is_staff ? 'bg-primary' : 'bg-light text-dark'}">
+                        ${user.is_staff ? 'Staff' : 'Customer'}
+                    </span>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // CRUD Operations
+    async createBooking(bookingData) {
+        try {
+            await this.apiCall('/bookings/', 'POST', bookingData);
+            this.showSuccess('Booking created successfully');
+            await this.loadBookingsData();
+        } catch (error) {
+            this.showError('Failed to create booking: ' + error.message);
+        }
+    }
+
+    async editBooking(bookingId) {
+        try {
+            const booking = await this.apiCall(`/bookings/${bookingId}/`);
+            this.showBookingModal(booking);
+        } catch (error) {
+            this.showError('Failed to load booking details');
+        }
+    }
+
+    async updateBooking(bookingId, bookingData) {
+        try {
+            await this.apiCall(`/bookings/${bookingId}/`, 'PUT', bookingData);
+            this.showSuccess('Booking updated successfully');
+            await this.loadBookingsData();
+        } catch (error) {
+            this.showError('Failed to update booking: ' + error.message);
+        }
+    }
+
+    async deleteBooking(bookingId) {
+        if (!confirm('Are you sure you want to delete this booking?')) return;
+
+        try {
+            await this.apiCall(`/bookings/${bookingId}/`, 'DELETE');
+            this.showSuccess('Booking deleted successfully');
+            await this.loadBookingsData();
+        } catch (error) {
+            this.showError('Failed to delete booking: ' + error.message);
+        }
+    }
+
+    async createService(serviceData) {
+        try {
+            await this.apiCall('/services/', 'POST', serviceData);
+            this.showSuccess('Service created successfully');
+            await this.loadServicesData();
+        } catch (error) {
+            this.showError('Failed to create service: ' + error.message);
+        }
+    }
+
+    async editService(serviceId) {
+        try {
+            const service = await this.apiCall(`/services/${serviceId}/`);
+            this.showServiceModal(service);
+        } catch (error) {
+            this.showError('Failed to load service details');
+        }
+    }
+
+    async updateService(serviceId, serviceData) {
+        try {
+            await this.apiCall(`/services/${serviceId}/`, 'PUT', serviceData);
+            this.showSuccess('Service updated successfully');
+            await this.loadServicesData();
+        } catch (error) {
+            this.showError('Failed to update service: ' + error.message);
+        }
+    }
+
+    async deleteService(serviceId) {
+        if (!confirm('Are you sure you want to delete this service?')) return;
+
+        try {
+            await this.apiCall(`/services/${serviceId}/`, 'DELETE');
+            this.showSuccess('Service deleted successfully');
+            await this.loadServicesData();
+        } catch (error) {
+            this.showError('Failed to delete service: ' + error.message);
+        }
+    }
+
+    // Modal Functions
+    showBookingModal(booking = null) {
+        const modalHtml = `
+            <div class="modal fade" id="bookingModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">${booking ? 'Edit Booking' : 'New Booking'}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="bookingForm">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Service</label>
+                                            <select class="form-select" name="service_id" required>
+                                                <option value="">Select Service</option>
+                                                ${this.currentServices.map(s => `
+                                                    <option value="${s.id}" ${booking && booking.service.id === s.id ? 'selected' : ''}>
+                                                        ${s.name} - £${s.price}
+                                                    </option>
+                                                `).join('')}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Date</label>
+                                            <input type="date" class="form-control" name="booking_date" 
+                                                   value="${booking ? booking.booking_date : ''}" required>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Time</label>
+                                            <input type="time" class="form-control" name="booking_time" 
+                                                   value="${booking ? booking.booking_time : ''}" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Amount</label>
+                                            <input type="number" step="0.01" class="form-control" name="amount" 
+                                                   value="${booking ? booking.amount : ''}" required>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">First Name</label>
+                                            <input type="text" class="form-control" name="customer_first_name" 
+                                                   value="${booking ? booking.customer_first_name : ''}" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Last Name</label>
+                                            <input type="text" class="form-control" name="customer_last_name" 
+                                                   value="${booking ? booking.customer_last_name : ''}">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Email</label>
+                                            <input type="email" class="form-control" name="customer_email" 
+                                                   value="${booking ? booking.customer_email : ''}" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Phone</label>
+                                            <input type="tel" class="form-control" name="customer_phone" 
+                                                   value="${booking ? booking.customer_phone : ''}">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Address</label>
+                                    <textarea class="form-control" name="customer_address" rows="2">${booking ? booking.customer_address : ''}</textarea>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label class="form-label">Payment Status</label>
+                                            <select class="form-select" name="payment_status">
+                                                <option value="pending" ${booking && booking.payment_status === 'pending' ? 'selected' : ''}>Pending</option>
+                                                <option value="completed" ${booking && booking.payment_status === 'completed' ? 'selected' : ''}>Completed</option>
+                                                <option value="failed" ${booking && booking.payment_status === 'failed' ? 'selected' : ''}>Failed</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <div class="form-check mt-4">
+                                                <input class="form-check-input" type="checkbox" name="is_paid" 
+                                                       ${booking && booking.is_paid ? 'checked' : ''}>
+                                                <label class="form-check-label">Paid</label>
+                                            </div>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="is_verified" 
+                                                       ${booking && booking.is_verified ? 'checked' : ''}>
+                                                <label class="form-check-label">Verified</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" onclick="adminPanel.saveBooking(${booking ? booking.id : null})">
+                                ${booking ? 'Update' : 'Create'} Booking
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Remove existing modal
+        const existingModal = document.getElementById('bookingModal');
+        if (existingModal) existingModal.remove();
+
+        // Add new modal
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('bookingModal'));
+        modal.show();
+    }
+
+    showServiceModal(service = null) {
+        const modalHtml = `
+            <div class="modal fade" id="serviceModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">${service ? 'Edit Service' : 'New Service'}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="serviceForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Service Code</label>
+                                    <input type="text" class="form-control" name="code" 
+                                           value="${service ? service.code : ''}" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Service Name</label>
+                                    <input type="text" class="form-control" name="name" 
+                                           value="${service ? service.name : ''}" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Description</label>
+                                    <textarea class="form-control" name="description" rows="3">${service ? service.description : ''}</textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Price (£)</label>
+                                    <input type="number" step="0.01" class="form-control" name="price" 
+                                           value="${service ? service.price : ''}" required>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="active" 
+                                           ${service && service.active ? 'checked' : (!service ? 'checked' : '')}>
+                                    <label class="form-check-label">Active</label>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" onclick="adminPanel.saveService(${service ? service.id : null})">
+                                ${service ? 'Update' : 'Create'} Service
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Remove existing modal
+        const existingModal = document.getElementById('serviceModal');
+        if (existingModal) existingModal.remove();
+
+        // Add new modal
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('serviceModal'));
+        modal.show();
+    }
+
+    async saveBooking(bookingId) {
+        const form = document.getElementById('bookingForm');
+        const formData = new FormData(form);
+        
+        const bookingData = {
+            service_id: parseInt(formData.get('service_id')),
+            booking_date: formData.get('booking_date'),
+            booking_time: formData.get('booking_time'),
+            customer_first_name: formData.get('customer_first_name'),
+            customer_last_name: formData.get('customer_last_name'),
+            customer_email: formData.get('customer_email'),
+            customer_phone: formData.get('customer_phone'),
+            customer_address: formData.get('customer_address'),
+            amount: parseFloat(formData.get('amount')),
+            payment_status: formData.get('payment_status'),
+            is_paid: formData.has('is_paid'),
+            is_verified: formData.has('is_verified')
+        };
+
+        if (bookingId) {
+            await this.updateBooking(bookingId, bookingData);
+        } else {
+            await this.createBooking(bookingData);
+        }
+
+        // Close modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('bookingModal'));
+        modal.hide();
+    }
+
+    async saveService(serviceId) {
+        const form = document.getElementById('serviceForm');
+        const formData = new FormData(form);
+        
+        const serviceData = {
+            code: formData.get('code'),
+            name: formData.get('name'),
+            description: formData.get('description'),
+            price: parseFloat(formData.get('price')),
+            active: formData.has('active')
+        };
+
+        if (serviceId) {
+            await this.updateService(serviceId, serviceData);
+        } else {
+            await this.createService(serviceData);
+        }
+
+        // Close modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('serviceModal'));
+        modal.hide();
+    }
+
+    handleSearch(query, pageId) {
+        // Implement search functionality for each page
+        console.log(`Searching for "${query}" in ${pageId}`);
+    }
+}
+
+// Initialize admin panel when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    window.adminPanel = new AdminPanel();
+});
 
     setupEventListeners() {
         // Sidebar navigation

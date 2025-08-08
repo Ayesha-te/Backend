@@ -154,13 +154,7 @@
                         Services
                     </a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="#vehicles" data-page="vehicles">
-                        <i class="bi bi-truck"></i>
-                        Vehicles
-                        <span class="badge bg-light text-dark ms-auto">0</span>
-                    </a>
-                </li>
+
 
                 <li class="nav-item">
                     <a class="nav-link" href="#payments" data-page="payments">
@@ -410,7 +404,7 @@
                         <button class="btn btn-outline-secondary me-2" onclick="exportData('bookings')">
                             <i class="bi bi-download me-1"></i>Export
                         </button>
-                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#bookingModal">
+                        <button class="btn btn-primary" onclick="adminPanel.showBookingModal()">
                             <i class="bi bi-plus-lg me-1"></i>Add Booking
                         </button>
                     </div>
@@ -459,7 +453,7 @@
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody id="bookingsTableBody">
+                                <tbody>
                                     <tr>
                                         <td colspan="9" class="text-center text-muted py-4">
                                             <div class="spinner-border spinner-border-sm me-2" role="status"></div>
@@ -473,20 +467,59 @@
                 </div>
             </div>
 
-            <!-- Other Pages (Services, Vehicles, Documents, Payments, Reports) -->
+            <!-- Services Page -->
             <div id="services-page" class="page-content" style="display: none;">
-                <div class="text-center py-5">
-                    <i class="bi bi-gear display-1 text-muted"></i>
-                    <h3 class="mt-3">Service Management</h3>
-                    <p class="text-muted">Manage PayPal and DVLA services</p>
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2>Service Management</h2>
+                    <div>
+                        <button class="btn btn-outline-secondary me-2" onclick="exportData('services')">
+                            <i class="bi bi-download me-1"></i>Export
+                        </button>
+                        <button class="btn btn-primary" onclick="adminPanel.showServiceModal()">
+                            <i class="bi bi-plus-lg me-1"></i>Add Service
+                        </button>
+                    </div>
                 </div>
-            </div>
-
-            <div id="vehicles-page" class="page-content" style="display: none;">
-                <div class="text-center py-5">
-                    <i class="bi bi-truck display-1 text-muted"></i>
-                    <h3 class="mt-3">Vehicle Management</h3>
-                    <p class="text-muted">Manage customer vehicles and MOT status</p>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <input type="text" class="form-control search-input" placeholder="Search services..." id="serviceSearch">
+                            </div>
+                            <div class="col-md-4">
+                                <select class="form-select" id="serviceStatusFilter">
+                                    <option value="">All Services</option>
+                                    <option value="active">Active</option>
+                                    <option value="inactive">Inactive</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0" id="servicesTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Code</th>
+                                        <th>Name</th>
+                                        <th>Description</th>
+                                        <th>Price</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-4">
+                                            <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                            Loading services data...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -494,7 +527,7 @@
 
             <div id="payments-page" class="page-content" style="display: none;">
                 <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h2>Payment Management</h2>
+                    <h2>Payment Overview</h2>
                     <div>
                         <button class="btn btn-outline-secondary me-2" onclick="exportData('payments')">
                             <i class="bi bi-download me-1"></i>Export
@@ -504,38 +537,7 @@
                 
                 <!-- Payment Stats -->
                 <div class="row mb-4">
-                    <div class="col-md-3">
-                        <div class="card text-center">
-                            <div class="card-body">
-                                <h5 class="card-title text-success">PayPal Revenue</h5>
-                                <h3 id="paypalRevenue">£0.00</h3>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card text-center">
-                            <div class="card-body">
-                                <h5 class="card-title text-info">DVLA Revenue</h5>
-                                <h3 id="dvlaRevenue">£0.00</h3>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card text-center">
-                            <div class="card-body">
-                                <h5 class="card-title text-primary">Total Revenue</h5>
-                                <h3 id="totalPaymentRevenue">£0.00</h3>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card text-center">
-                            <div class="card-body">
-                                <h5 class="card-title text-warning">Today's Revenue</h5>
-                                <h3 id="todayPaymentRevenue">£0.00</h3>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Payment stats will be dynamically loaded here -->
                 </div>
 
                 <!-- Recent Payments -->

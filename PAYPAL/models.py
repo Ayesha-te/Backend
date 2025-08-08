@@ -12,7 +12,7 @@ class Service(models.Model):
         return self.name
 
 class Booking(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='bookings')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='bookings', null=True, blank=True)
     service = models.ForeignKey(Service, on_delete=models.CASCADE)
     mot_class = models.CharField(max_length=32, blank=True)
     date = models.DateField()

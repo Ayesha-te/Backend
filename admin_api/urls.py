@@ -12,6 +12,7 @@ urlpatterns = [
     
     # Bookings endpoints
     path('bookings/', views.BookingsListView.as_view(), name='bookings-list'),
+    path('bookings/<int:booking_id>/', views.BookingDetailView.as_view(), name='booking-detail'),
     path('bookings/count/', views.BookingsCountView.as_view(), name='bookings-count'),
     path('bookings/trends/', views.BookingTrendsView.as_view(), name='booking-trends'),
     path('bookings/service-distribution/', views.ServiceDistributionView.as_view(), name='service-distribution'),
@@ -21,7 +22,7 @@ urlpatterns = [
     
     # Services endpoints
     path('services/', views.ServicesListView.as_view(), name='services-list'),
+    path('services/<int:service_id>/', views.ServiceDetailView.as_view(), name='service-detail'),
     
-    # Vehicles endpoints
-    path('vehicles/', views.VehiclesListView.as_view(), name='vehicles-list'),
+    # Vehicles endpoints removed as requested
 ]
