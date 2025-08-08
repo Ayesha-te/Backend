@@ -420,19 +420,36 @@ class PaymentCaptureAPIView(APIView):
         action = request.data.get('action', 'capture')  # 'create' or 'capture'
         payment_method = request.data.get('payment_method', 'paypal')  # 'paypal', 'card', or 'cash'
 
+        logger.info(f"Payment capture request - booking_id: {booking_id}, action: {action}, payment_method: {payment_method}, customer_email: {customer_email}")
+
+        # Enhanced validation with detailed logging
+        missing_params = []
         if not booking_id:
-            return Response({"error": "Missing booking_id"}, status=400)
+            missing_params.append('booking_id')
+        if not request.user.is_authenticated and not customer_email:
+            missing_params.append('customer_email')
+        if action == 'capture' and payment_method == 'paypal' and not paypal_order_id:
+            missing_params.append('paypal_order_id')
+
+        if missing_params:
+            error_msg = f"Missing required parameters: {', '.join(missing_params)}"
+            logger.error(f"Payment capture failed: {error_msg}. Request data: {request.data}")
+            return Response({
+                "error": f"Missing {missing_params[0]}" if len(missing_params) == 1 else error_msg,
+                "missing_parameters": missing_params
+            }, status=400)
 
         try:
             # For authenticated users, filter by user
             if request.user.is_authenticated:
                 booking = Booking.objects.get(id=booking_id, user=request.user)
+                logger.info(f"Found booking {booking_id} for authenticated user {request.user.id}")
             else:
                 # For anonymous users, require email verification
-                if not customer_email:
-                    return Response({"error": "Email required for anonymous payment"}, status=400)
                 booking = Booking.objects.get(id=booking_id, customer_email=customer_email)
+                logger.info(f"Found booking {booking_id} for anonymous user with email {customer_email}")
         except Booking.DoesNotExist:
+            logger.error(f"Payment capture failed: Booking {booking_id} not found")
             return Response({"error": "Booking not found"}, status=404)
 
         # Handle different payment methods
@@ -546,9 +563,6 @@ class PaymentCaptureAPIView(APIView):
 
         # Handle payment capture (default action)
         else:
-            if not paypal_order_id:
-                return Response({"error": "Missing paypal_order_id for capture"}, status=400)
-
             try:
                 # Capture payment through PayPal API
                 capture_result = paypal_api.capture_order(paypal_order_id)
@@ -685,9 +699,20 @@ class PayPalCreateOrderAPIView(APIView):
         
         logger.info(f"PayPal create order request - booking_id: {booking_id}, customer_email: {customer_email}")
         
+        # Enhanced validation with detailed logging
+        missing_params = []
         if not booking_id:
-            logger.error("PayPal create order failed: Missing booking_id")
-            return Response({"error": "Missing booking_id"}, status=400)
+            missing_params.append('booking_id')
+        if not request.user.is_authenticated and not customer_email:
+            missing_params.append('customer_email')
+        
+        if missing_params:
+            error_msg = f"Missing required parameters: {', '.join(missing_params)}"
+            logger.error(f"PayPal create order failed: {error_msg}. Request data: {request.data}")
+            return Response({
+                "error": f"Missing {missing_params[0]}" if len(missing_params) == 1 else error_msg,
+                "missing_parameters": missing_params
+            }, status=400)
 
         try:
             # For authenticated users, filter by user
@@ -696,9 +721,6 @@ class PayPalCreateOrderAPIView(APIView):
                 logger.info(f"Found booking {booking_id} for authenticated user {request.user.id}")
             else:
                 # For anonymous users, require email verification
-                if not customer_email:
-                    logger.error("PayPal create order failed: Email required for anonymous payment")
-                    return Response({"error": "Email required for anonymous payment"}, status=400)
                 booking = Booking.objects.get(id=booking_id, customer_email=customer_email)
                 logger.info(f"Found booking {booking_id} for anonymous user with email {customer_email}")
         except Booking.DoesNotExist:
