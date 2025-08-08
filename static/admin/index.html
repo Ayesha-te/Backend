@@ -186,7 +186,7 @@
                 <div class="navbar-nav ms-auto">
                     <div class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
-                            <img src="https://via.placeholder.com/32x32/0d6efd/ffffff?text=AA" class="rounded-circle me-2" alt="Admin">
+                            <i class="bi bi-person-circle fs-4 me-2"></i>
                             Access Auto Admin
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
@@ -339,7 +339,7 @@
                         <button class="btn btn-outline-secondary me-2" onclick="exportData('users')">
                             <i class="bi bi-download me-1"></i>Export
                         </button>
-                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#userModal">
+                        <button class="btn btn-primary" onclick="adminPanel.showUserModal()">
                             <i class="bi bi-plus-lg me-1"></i>Add User
                         </button>
                     </div>

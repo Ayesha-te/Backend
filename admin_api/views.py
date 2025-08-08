@@ -13,6 +13,7 @@ import logging
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
+@method_decorator(csrf_exempt, name='dispatch')
 class UsersListView(View):
     def get(self, request):
         try:
@@ -36,6 +37,133 @@ class UsersListView(View):
             
             return JsonResponse({'results': users_data})
         except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    def post(self, request):
+        """Create a new user"""
+        try:
+            data = json.loads(request.body)
+            logger.info(f"Creating new user with data: {data}")
+            
+            # Validate required fields
+            required_fields = ['email', 'password']
+            for field in required_fields:
+                if not data.get(field):
+                    return JsonResponse({'error': f'{field} is required'}, status=400)
+            
+            # Check if email already exists
+            if User.objects.filter(email=data['email']).exists():
+                return JsonResponse({'error': 'Email already exists'}, status=400)
+            
+            # Create user
+            user = User.objects.create_user(
+                email=data['email'],
+                password=data['password'],
+                first_name=data.get('first_name', ''),
+                last_name=data.get('last_name', ''),
+                is_staff=data.get('is_staff', False),
+                is_active=data.get('is_active', True)
+            )
+            
+            logger.info(f"User created successfully with ID: {user.id}")
+            
+            return JsonResponse({
+                'message': 'User created successfully',
+                'user_id': user.id
+            }, status=201)
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+        except Exception as e:
+            logger.error(f"Error creating user: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UserDetailView(View):
+    def get(self, request, user_id):
+        """Get individual user details"""
+        try:
+            user = User.objects.get(id=user_id)
+            paypal_bookings = PayPalBooking.objects.filter(user=user).count()
+            
+            user_data = {
+                'id': user.id,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'is_active': user.is_active,
+                'is_staff': user.is_staff,
+                'date_joined': user.date_joined.isoformat(),
+                'booking_count': paypal_bookings
+            }
+            
+            return JsonResponse(user_data)
+        except User.DoesNotExist:
+            return JsonResponse({'error': 'User not found'}, status=404)
+        except Exception as e:
+            logger.error(f"Error fetching user {user_id}: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    def put(self, request, user_id):
+        """Update user"""
+        try:
+            user = User.objects.get(id=user_id)
+            data = json.loads(request.body)
+            
+            # Update fields if provided
+            if 'email' in data:
+                # Check if email already exists for other users
+                if User.objects.filter(email=data['email']).exclude(id=user_id).exists():
+                    return JsonResponse({'error': 'Email already exists'}, status=400)
+                user.email = data['email']
+            
+            for field in ['first_name', 'last_name']:
+                if field in data:
+                    setattr(user, field, data[field])
+            
+            if 'is_active' in data:
+                user.is_active = bool(data['is_active'])
+            if 'is_staff' in data:
+                user.is_staff = bool(data['is_staff'])
+            
+            # Update password if provided
+            if 'password' in data and data['password']:
+                user.set_password(data['password'])
+            
+            user.save()
+            
+            logger.info(f"User {user_id} updated successfully")
+            return JsonResponse({'message': 'User updated successfully'})
+            
+        except User.DoesNotExist:
+            return JsonResponse({'error': 'User not found'}, status=404)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+        except Exception as e:
+            logger.error(f"Error updating user {user_id}: {e}")
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    def delete(self, request, user_id):
+        """Delete user"""
+        try:
+            user = User.objects.get(id=user_id)
+            
+            # Check if user has bookings
+            booking_count = PayPalBooking.objects.filter(user=user).count()
+            if booking_count > 0:
+                return JsonResponse({
+                    'error': f'Cannot delete user. They have {booking_count} associated bookings.'
+                }, status=400)
+            
+            user.delete()
+            
+            logger.info(f"User {user_id} deleted successfully")
+            return JsonResponse({'message': 'User deleted successfully'})
+            
+        except User.DoesNotExist:
+            return JsonResponse({'error': 'User not found'}, status=404)
+        except Exception as e:
+            logger.error(f"Error deleting user {user_id}: {e}")
             return JsonResponse({'error': str(e)}, status=500)
 
 class UsersCountView(View):

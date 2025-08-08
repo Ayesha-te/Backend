@@ -8,6 +8,7 @@ urlpatterns = [
     
     # Users endpoints
     path('users/', views.UsersListView.as_view(), name='users-list'),
+    path('users/<int:user_id>/', views.UserDetailView.as_view(), name='user-detail'),
     path('users/count/', views.UsersCountView.as_view(), name='users-count'),
     
     # Bookings endpoints
