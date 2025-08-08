@@ -10,19 +10,48 @@ class PayPalAPI:
     """PayPal API integration utility"""
     
     def __init__(self):
-        self.client_id = settings.PAYPAL_CLIENT_ID
-        self.client_secret = settings.PAYPAL_SECRET
-        self.api_base = settings.PAYPAL_API_BASE
-        self.webhook_id = getattr(settings, 'PAYPAL_WEBHOOK_ID', None)
+        # Load credentials from Django settings (which loads from .env)
+        self.client_id = getattr(settings, 'PAYPAL_CLIENT_ID', None)
+        self.client_secret = getattr(settings, 'PAYPAL_SECRET', None)
+        self.api_base = getattr(settings, 'PAYPAL_API_BASE', 'https://api-m.paypal.com')
         self.access_token = None
         
         # Validate PayPal configuration
         if not self.client_id or not self.client_secret:
-            logger.error("PayPal credentials not configured. Please set PAYPAL_CLIENT_ID and PAYPAL_SECRET in environment variables.")
-        elif self.client_id in ["sb-1vjnx44839480@business.example.com", "your_live_paypal_client_id_here"]:
-            logger.error("PayPal credentials are still placeholders. Please update with real credentials from https://developer.paypal.com/")
+            logger.error("PayPal credentials not configured. Please set PAYPAL_CLIENT_ID and PAYPAL_SECRET in .env file")
+        elif self.client_id.strip() == "" or self.client_secret.strip() == "":
+            logger.error("PayPal credentials are empty. Please check your .env file")
+        elif self._are_placeholder_credentials():
+            logger.warning("PayPal credentials appear to be placeholder/example credentials")
+            logger.warning("Please get real PayPal credentials from https://developer.paypal.com/")
+            logger.warning("See GET_REAL_PAYPAL_SANDBOX_CREDENTIALS.md for instructions")
         else:
-            logger.info("PayPal configuration loaded successfully")
+            # Log successful configuration (without exposing credentials)
+            client_id_preview = f"{self.client_id[:8]}...{self.client_id[-4:]}" if len(self.client_id) > 12 else "***"
+            logger.info(f"PayPal configuration loaded successfully - Client ID: {client_id_preview}, API Base: {self.api_base}")
+            
+            # Determine environment
+            if 'sandbox' in self.api_base.lower():
+                logger.info("PayPal configured for SANDBOX environment")
+            else:
+                logger.info("PayPal configured for LIVE environment")
+    
+    def _are_placeholder_credentials(self):
+        """Check if credentials are placeholder/example values"""
+        placeholder_patterns = [
+            "AX-fjz_IjsdMWVi7Vn7eAVIYO4E-_hJf_Rq95sM3846o6pk",  # Current placeholder
+            "EIeNSv_r8UGAX5qlwRlQ2BJGzfyOvjomZqp5-sbXww_JCcSXfOeBL7cwh-6f3FZQ0pnfV7WgQzbgbs4Z",  # Current placeholder
+            "your_client_id_here",
+            "your_secret_here",
+            "sb-1vjnx44839480@business.example.com",
+            "your_live_paypal_client_id_here",
+            "your_sandbox_client_id_here"
+        ]
+        
+        return (self.client_id in placeholder_patterns or 
+                self.client_secret in placeholder_patterns or
+                "example" in self.client_id.lower() or
+                "placeholder" in self.client_id.lower())
     
     def get_access_token(self):
         """Get PayPal access token"""
@@ -176,45 +205,7 @@ class PayPalAPI:
             logger.error(f"Failed to get PayPal order details {order_id}: {e}")
             raise
     
-    def verify_webhook_signature(self, headers, body):
-        """Verify PayPal webhook signature"""
-        try:
-            if not self.webhook_id:
-                logger.warning("PayPal webhook ID not configured")
-                return False
-            
-            if not self.access_token:
-                self.get_access_token()
-            
-            url = f"{self.api_base}/v1/notifications/verify-webhook-signature"
-            
-            verification_data = {
-                "auth_algo": headers.get('PAYPAL-AUTH-ALGO'),
-                "cert_id": headers.get('PAYPAL-CERT-ID'),
-                "transmission_id": headers.get('PAYPAL-TRANSMISSION-ID'),
-                "transmission_sig": headers.get('PAYPAL-TRANSMISSION-SIG'),
-                "transmission_time": headers.get('PAYPAL-TRANSMISSION-TIME'),
-                "webhook_id": self.webhook_id,
-                "webhook_event": body
-            }
-            
-            headers_req = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.access_token}"
-            }
-            
-            response = requests.post(url, headers=headers_req, json=verification_data)
-            response.raise_for_status()
-            
-            result = response.json()
-            verification_status = result.get('verification_status')
-            
-            logger.info(f"Webhook verification status: {verification_status}")
-            return verification_status == 'SUCCESS'
-            
-        except Exception as e:
-            logger.error(f"Failed to verify webhook signature: {e}")
-            return False
+
     
     def send_payout(self, recipient_email, amount, currency="GBP", note="Payment from Access Auto Services"):
         """Send payout to recipient (for refunds or payments to service providers)"""

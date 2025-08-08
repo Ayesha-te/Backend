@@ -393,15 +393,18 @@ class BookingDebugAPIView(APIView):
 
      
 class PaymentCaptureAPIView(APIView):
+    """Complete payment processing - handles PayPal, Card, and Cash payments"""
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         booking_id = request.data.get('booking_id')
         paypal_order_id = request.data.get('paypal_order_id')
         customer_email = request.data.get('customer_email')  # For anonymous users
+        action = request.data.get('action', 'capture')  # 'create' or 'capture'
+        payment_method = request.data.get('payment_method', 'paypal')  # 'paypal', 'card', or 'cash'
 
-        if not booking_id or not paypal_order_id:
-            return Response({"error": "Missing booking_id or paypal_order_id"}, status=400)
+        if not booking_id:
+            return Response({"error": "Missing booking_id"}, status=400)
 
         try:
             # For authenticated users, filter by user
@@ -415,68 +418,244 @@ class PaymentCaptureAPIView(APIView):
         except Booking.DoesNotExist:
             return Response({"error": "Booking not found"}, status=404)
 
+        # Handle different payment methods
+        if payment_method == 'cash':
+            return self._handle_cash_payment(booking)
+        elif payment_method == 'card':
+            return self._handle_card_payment(booking, request.data)
+        elif payment_method == 'paypal':
+            return self._handle_paypal_payment(booking, action, paypal_order_id)
+        else:
+            return Response({"error": "Invalid payment method"}, status=400)
+
+    def _handle_cash_payment(self, booking):
+        """Handle cash payment - just mark as confirmed"""
         try:
-            # Capture payment through PayPal API
-            capture_result = paypal_api.capture_order(paypal_order_id)
-            
-            # Extract transaction details
-            capture_id = None
-            if capture_result.get('purchase_units'):
-                payments = capture_result['purchase_units'][0].get('payments', {})
-                captures = payments.get('captures', [])
-                if captures:
-                    capture_id = captures[0].get('id')
-            
-            # Update booking with payment information
-            booking.payment_status = 'completed'
-            booking.is_paid = True
-            booking.paypal_order_id = paypal_order_id
-            booking.paypal_transaction_id = capture_id or paypal_order_id
+            booking.payment_method = 'cash'
+            booking.payment_status = 'pending'  # Will be paid on arrival
+            booking.is_paid = False  # Not paid yet
             booking.save()
 
-            logger.info(f"Payment captured for booking {booking_id}: {capture_id}")
+            logger.info(f"Cash payment selected for booking {booking.id}")
 
-            # Send payment confirmation email to both customer and owner
-            try:
-                recipient_list = [booking.customer_email]
-                owner_email = settings.OWNER_EMAIL
-                if owner_email and owner_email not in recipient_list:
-                    recipient_list.append(owner_email)
-                
-                send_mail(
-                    subject='Payment Confirmed - Booking Confirmed',
-                    message=(
-                        f"Dear {booking.customer_first_name},\n\n"
-                        f"Your payment has been successfully processed!\n\n"
-                        f"Booking Details:\n"
-                        f"Service: {booking.service.name}\n"
-                        f"Date: {booking.date}\n"
-                        f"Time: {booking.time}\n"
-                        f"Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})\n"
-                        f"Amount: £{booking.payment_amount}\n"
-                        f"Transaction ID: {booking.paypal_transaction_id}\n\n"
-                        f"Your booking is now confirmed. We look forward to seeing you!\n\n"
-                        f"Best regards,\nAccess Auto Services Team"
-                    ),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=recipient_list,
-                    fail_silently=False,
-                )
-                logger.info(f"Payment confirmation email sent for booking {booking_id} to {recipient_list}")
-            except Exception as e:
-                logger.error(f"Failed to send payment confirmation email: {e}")
+            # Send booking confirmation email
+            self._send_booking_confirmation_email(booking, payment_type='cash')
 
             return Response({
-                "message": "Payment captured successfully!",
-                "transaction_id": booking.paypal_transaction_id,
-                "booking_id": booking.id
+                "message": "Booking confirmed! Payment will be collected on arrival.",
+                "booking_id": booking.id,
+                "payment_method": "cash",
+                "payment_status": "pending"
             }, status=200)
 
         except Exception as e:
-            logger.error(f"PayPal capture failed for order {paypal_order_id}: {e}")
+            logger.error(f"Cash payment processing failed for booking {booking.id}: {e}")
             return Response({
-                "error": "Payment capture failed. Please try again."
+                "error": "Failed to process cash payment booking. Please try again."
             }, status=400)
+
+    def _handle_card_payment(self, booking, data):
+        """Handle credit card payment - placeholder for future implementation"""
+        # For now, we'll treat card payments similar to cash (to be implemented later)
+        try:
+            # Store card details (in production, these should be encrypted/tokenized)
+            booking.payment_method = 'card'
+            booking.card_number = data.get('card_number', '')[-4:]  # Store only last 4 digits
+            booking.name_on_card = data.get('name_on_card', '')
+            booking.payment_status = 'pending'  # Would be processed through payment gateway
+            booking.is_paid = False  # Would be true after successful processing
+            booking.save()
+
+            logger.info(f"Card payment details stored for booking {booking.id}")
+
+            # Send booking confirmation email
+            self._send_booking_confirmation_email(booking, payment_type='card')
+
+            return Response({
+                "message": "Booking confirmed! Card payment will be processed.",
+                "booking_id": booking.id,
+                "payment_method": "card",
+                "payment_status": "pending",
+                "note": "Card payment processing will be implemented in future update"
+            }, status=200)
+
+        except Exception as e:
+            logger.error(f"Card payment processing failed for booking {booking.id}: {e}")
+            return Response({
+                "error": "Failed to process card payment. Please try again."
+            }, status=400)
+
+    def _handle_paypal_payment(self, booking, action, paypal_order_id):
+        """Handle PayPal payment - existing functionality"""
+
+        # Handle order creation
+        if action == 'create':
+            if booking.is_paid:
+                return Response({"error": "Booking is already paid"}, status=400)
+
+            try:
+                # Create PayPal order
+                amount = float(booking.payment_amount) if booking.payment_amount else 0
+                description = f"Booking for {booking.service.name} on {booking.date}"
+                
+                order = paypal_api.create_order(
+                    amount=amount,
+                    currency=booking.payment_currency,
+                    description=description,
+                    custom_id=booking.id
+                )
+                
+                # Store PayPal order ID in booking
+                booking.payment_method = 'paypal'
+                booking.paypal_order_id = order.get('id')
+                booking.payment_status = 'created'
+                booking.save()
+                
+                logger.info(f"PayPal order created for booking {booking.id}: {order.get('id')}")
+                
+                return Response({
+                    "order_id": order.get('id'),
+                    "booking_id": booking.id,
+                    "amount": amount,
+                    "currency": booking.payment_currency,
+                    "payment_method": "paypal"
+                }, status=201)
+
+            except Exception as e:
+                logger.error(f"Failed to create PayPal order for booking {booking.id}: {e}")
+                return Response({
+                    "error": "Failed to create payment order. Please try again."
+                }, status=500)
+
+        # Handle payment capture (default action)
+        else:
+            if not paypal_order_id:
+                return Response({"error": "Missing paypal_order_id for capture"}, status=400)
+
+            try:
+                # Capture payment through PayPal API
+                capture_result = paypal_api.capture_order(paypal_order_id)
+                
+                # Extract transaction details
+                capture_id = None
+                if capture_result.get('purchase_units'):
+                    payments = capture_result['purchase_units'][0].get('payments', {})
+                    captures = payments.get('captures', [])
+                    if captures:
+                        capture_id = captures[0].get('id')
+                
+                # Update booking with payment information
+                booking.payment_method = 'paypal'
+                booking.payment_status = 'completed'
+                booking.is_paid = True
+                booking.paypal_order_id = paypal_order_id
+                booking.paypal_transaction_id = capture_id or paypal_order_id
+                booking.save()
+
+                logger.info(f"Payment captured for booking {booking.id}: {capture_id}")
+
+                # Send payment confirmation email
+                self._send_booking_confirmation_email(booking, payment_type='paypal')
+
+                return Response({
+                    "message": "Payment captured successfully!",
+                    "transaction_id": booking.paypal_transaction_id,
+                    "booking_id": booking.id,
+                    "booking_status": "confirmed",
+                    "payment_status": "completed",
+                    "payment_method": "paypal"
+                }, status=200)
+
+            except Exception as e:
+                logger.error(f"PayPal capture failed for order {paypal_order_id}: {e}")
+                return Response({
+                    "error": "Payment capture failed. Please try again."
+                }, status=400)
+
+    def _send_booking_confirmation_email(self, booking, payment_type='paypal'):
+        """Send booking confirmation email based on payment type"""
+        try:
+            recipient_list = [booking.customer_email]
+            owner_email = settings.OWNER_EMAIL
+            if owner_email and owner_email not in recipient_list:
+                recipient_list.append(owner_email)
+            
+            # Get customer name
+            customer_name = booking.customer_first_name or 'Customer'
+            
+            # Build vehicle info
+            vehicle_info = f"{booking.vehicle_make} {booking.vehicle_model}"
+            if booking.vehicle_registration:
+                vehicle_info += f" ({booking.vehicle_registration})"
+            
+            # Customize message based on payment type
+            if payment_type == 'paypal':
+                subject = 'Payment Confirmed - Booking Confirmed'
+                payment_info = (
+                    f"Amount: £{booking.payment_amount}\n"
+                    f"Transaction ID: {booking.paypal_transaction_id}\n"
+                    f"Payment Method: PayPal\n"
+                    f"Payment Status: Completed\n\n"
+                    f"Your payment has been successfully processed through PayPal!"
+                )
+            elif payment_type == 'cash':
+                subject = 'Booking Confirmed - Cash Payment on Arrival'
+                payment_info = (
+                    f"Amount: £{booking.payment_amount}\n"
+                    f"Payment Method: Cash on Arrival\n"
+                    f"Payment Status: Pending\n\n"
+                    f"Please bring cash payment on the day of your appointment."
+                )
+            elif payment_type == 'card':
+                subject = 'Booking Confirmed - Card Payment Processing'
+                payment_info = (
+                    f"Amount: £{booking.payment_amount}\n"
+                    f"Payment Method: Credit/Debit Card\n"
+                    f"Payment Status: Processing\n\n"
+                    f"Your card payment is being processed and you'll receive confirmation shortly."
+                )
+            else:
+                subject = 'Booking Confirmed'
+                payment_info = f"Amount: £{booking.payment_amount}\n"
+            
+            message = (
+                f"Dear {customer_name},\n\n"
+                f"Your booking has been confirmed!\n\n"
+                f"BOOKING DETAILS:\n"
+                f"{'='*50}\n"
+                f"Service: {booking.service.name}\n"
+                f"Date: {booking.date.strftime('%A, %B %d, %Y')}\n"
+                f"Time: {booking.time}\n"
+                f"Vehicle: {vehicle_info}\n\n"
+                f"PAYMENT INFORMATION:\n"
+                f"{'='*50}\n"
+                f"{payment_info}\n"
+                f"CUSTOMER INFORMATION:\n"
+                f"{'='*50}\n"
+                f"Name: {booking.customer_first_name} {booking.customer_last_name}\n"
+                f"Email: {booking.customer_email}\n"
+                f"Phone: {booking.customer_phone}\n\n"
+                f"We look forward to seeing you!\n\n"
+                f"CONTACT INFORMATION:\n"
+                f"{'='*50}\n"
+                f"Access Auto Services\n"
+                f"Email: {settings.DEFAULT_FROM_EMAIL}\n"
+                f"Website: https://www.access-auto-services.co.uk\n\n"
+                f"Thank you for choosing Access Auto Services!\n\n"
+                f"Best regards,\nAccess Auto Services Team"
+            )
+            
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=recipient_list,
+                fail_silently=False,
+            )
+            logger.info(f"Booking confirmation email sent for booking {booking.id} to {recipient_list}")
+            
+        except Exception as e:
+            logger.error(f"Failed to send booking confirmation email: {e}")
 
 
 class PayPalCreateOrderAPIView(APIView):
@@ -561,148 +740,3 @@ class BookingDetailAPIView(APIView):
         return Response(serializer.data, status=200)
 
 
-class PayPalWebhookAPIView(APIView):
-    """Handle PayPal webhook notifications"""
-    permission_classes = [permissions.AllowAny]
-    
-    def post(self, request):
-        try:
-            # Get webhook headers and body
-            headers = {
-                'PAYPAL-AUTH-ALGO': request.META.get('HTTP_PAYPAL_AUTH_ALGO'),
-                'PAYPAL-CERT-ID': request.META.get('HTTP_PAYPAL_CERT_ID'),
-                'PAYPAL-TRANSMISSION-ID': request.META.get('HTTP_PAYPAL_TRANSMISSION_ID'),
-                'PAYPAL-TRANSMISSION-SIG': request.META.get('HTTP_PAYPAL_TRANSMISSION_SIG'),
-                'PAYPAL-TRANSMISSION-TIME': request.META.get('HTTP_PAYPAL_TRANSMISSION_TIME'),
-            }
-            
-            # Verify webhook signature
-            if not paypal_api.verify_webhook_signature(headers, request.data):
-                logger.warning("PayPal webhook signature verification failed")
-                return Response({"error": "Invalid signature"}, status=400)
-            
-            event_type = request.data.get('event_type')
-            resource = request.data.get('resource', {})
-            
-            logger.info(f"PayPal webhook received: {event_type}")
-            
-            # Handle payment completion
-            if event_type == 'PAYMENT.CAPTURE.COMPLETED':
-                self.handle_payment_completed(resource)
-            elif event_type == 'PAYMENT.CAPTURE.DENIED':
-                self.handle_payment_denied(resource)
-            elif event_type == 'PAYMENT.CAPTURE.REFUNDED':
-                self.handle_payment_refunded(resource)
-            
-            return Response({"status": "success"}, status=200)
-            
-        except Exception as e:
-            logger.error(f"PayPal webhook error: {e}")
-            return Response({"error": "Webhook processing failed"}, status=500)
-    
-    def handle_payment_completed(self, resource):
-        """Handle completed payment"""
-        try:
-            # Extract payment details
-            capture_id = resource.get('id')
-            amount = resource.get('amount', {})
-            custom_id = resource.get('custom_id')  # This should contain booking ID
-            
-            if custom_id:
-                try:
-                    booking = Booking.objects.get(id=custom_id)
-                    booking.payment_status = 'completed'
-                    booking.is_paid = True
-                    booking.paypal_transaction_id = capture_id
-                    booking.save()
-                    
-                    # Send payment confirmation email
-                    self.send_payment_confirmation_email(booking)
-                    
-                    logger.info(f"Payment completed for booking {booking.id}: {capture_id}")
-                    
-                except Booking.DoesNotExist:
-                    logger.error(f"Booking not found for payment: {custom_id}")
-            
-        except Exception as e:
-            logger.error(f"Error handling payment completion: {e}")
-    
-    def handle_payment_denied(self, resource):
-        """Handle denied payment"""
-        try:
-            custom_id = resource.get('custom_id')
-            if custom_id:
-                try:
-                    booking = Booking.objects.get(id=custom_id)
-                    booking.payment_status = 'failed'
-                    booking.save()
-                    
-                    logger.info(f"Payment denied for booking {booking.id}")
-                    
-                except Booking.DoesNotExist:
-                    logger.error(f"Booking not found for denied payment: {custom_id}")
-                    
-        except Exception as e:
-            logger.error(f"Error handling payment denial: {e}")
-    
-    def handle_payment_refunded(self, resource):
-        """Handle refunded payment"""
-        try:
-            custom_id = resource.get('custom_id')
-            if custom_id:
-                try:
-                    booking = Booking.objects.get(id=custom_id)
-                    booking.payment_status = 'refunded'
-                    booking.save()
-                    
-                    logger.info(f"Payment refunded for booking {booking.id}")
-                    
-                except Booking.DoesNotExist:
-                    logger.error(f"Booking not found for refunded payment: {custom_id}")
-                    
-        except Exception as e:
-            logger.error(f"Error handling payment refund: {e}")
-    
-    def send_payment_confirmation_email(self, booking):
-        """Send payment confirmation email"""
-        try:
-            from django.core.mail import send_mail
-            from django.conf import settings
-            
-            recipient_list = [booking.customer_email]
-            owner_email = settings.OWNER_EMAIL
-            if owner_email and owner_email not in recipient_list:
-                recipient_list.append(owner_email)
-            
-            subject = 'Payment Confirmed - Access Auto Services'
-            message = f"""
-Dear {booking.customer_first_name or 'Customer'},
-
-Your payment has been successfully processed!
-
-Booking Details:
-- Service: {booking.service.name}
-- Date: {booking.date}
-- Time: {booking.time}
-- Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})
-- Amount: £{booking.payment_amount}
-- Transaction ID: {booking.paypal_transaction_id}
-
-Your booking is now confirmed. We look forward to seeing you!
-
-Best regards,
-Access Auto Services Team
-            """
-            
-            send_mail(
-                subject=subject,
-                message=message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=recipient_list,
-                fail_silently=False,
-            )
-            
-            logger.info(f"Payment confirmation email sent for booking {booking.id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to send payment confirmation email: {e}")

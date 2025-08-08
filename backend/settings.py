@@ -207,11 +207,20 @@ CORS_EXPOSE_HEADERS = [
     'X-CSRFToken',
 ]
 
-# PayPal Configuration
-PAYPAL_CLIENT_ID = os.getenv('PAYPAL_CLIENT_ID')
-PAYPAL_SECRET = os.getenv('PAYPAL_SECRET')
-PAYPAL_API_BASE = os.getenv('PAYPAL_API_BASE', 'https://api-m.paypal.com')
-PAYPAL_WEBHOOK_ID = os.getenv('PAYPAL_WEBHOOK_ID')
+# PayPal Configuration - Only 3 credentials needed from .env file
+PAYPAL_CLIENT_ID = os.getenv('PAYPAL_CLIENT_ID', '').strip()
+PAYPAL_SECRET = os.getenv('PAYPAL_SECRET', '').strip()
+PAYPAL_API_BASE = os.getenv('PAYPAL_API_BASE', 'https://api-m.paypal.com').strip()
+
+# Validate PayPal credentials are loaded
+if not PAYPAL_CLIENT_ID or not PAYPAL_SECRET:
+    print("⚠️  WARNING: PayPal credentials not found in .env file")
+    print("   Please ensure PAYPAL_CLIENT_ID and PAYPAL_SECRET are set in your .env file")
+else:
+    # Show configuration status without exposing credentials
+    client_preview = f"{PAYPAL_CLIENT_ID[:8]}...{PAYPAL_CLIENT_ID[-4:]}" if len(PAYPAL_CLIENT_ID) > 12 else "***"
+    env_type = "SANDBOX" if 'sandbox' in PAYPAL_API_BASE.lower() else "LIVE"
+    print(f"✅ PayPal credentials loaded from .env - Client: {client_preview}, Environment: {env_type}")
 
 # DVLA API Configuration
 DVLA_API_KEY = os.getenv('DVLA_API_KEY')

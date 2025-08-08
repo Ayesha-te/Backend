@@ -6,7 +6,6 @@ from .views import (
     BookingVerifyAPIView, 
     PaymentCaptureAPIView,
     PayPalCreateOrderAPIView,
-    PayPalWebhookAPIView,
     BookingDebugAPIView
 )
 
@@ -18,5 +17,4 @@ urlpatterns = [
     path('bookings/verify/<str:token>/', BookingVerifyAPIView.as_view(), name='booking-verify'),
     path('create-order/', PayPalCreateOrderAPIView.as_view(), name='paypal-create-order'),
     path('capture-payment/', PaymentCaptureAPIView.as_view(), name='paypal-capture-payment'),
-    path('webhook/', PayPalWebhookAPIView.as_view(), name='paypal-webhook'),
 ]
