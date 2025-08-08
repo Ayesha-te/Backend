@@ -7,6 +7,7 @@ class AdminPanel {
         this.apiBaseUrl = '/api'; // Same server API endpoints
         this.currentBookings = [];
         this.currentServices = [];
+        this.currentUsers = [];
         this.init();
     }
 
@@ -18,9 +19,13 @@ class AdminPanel {
     }
 
     checkAuth() {
-        // For demo purposes, we'll skip auth check
-        // In production, implement proper authentication
-        console.log('Admin panel loaded');
+        // Check if user is logged in
+        const isLoggedIn = sessionStorage.getItem('adminLoggedIn');
+        if (!isLoggedIn) {
+            window.location.href = '/static/admin/login.html';
+            return;
+        }
+        console.log('Admin panel loaded for:', sessionStorage.getItem('adminUser'));
     }
 
     setupEventListeners() {
@@ -203,7 +208,8 @@ class AdminPanel {
     async loadUsersData() {
         try {
             const response = await this.apiCall('/users/');
-            this.renderUsersTable(response.results || []);
+            this.currentUsers = response.results || [];
+            this.renderUsersTable(this.currentUsers);
         } catch (error) {
             console.error('Error loading users:', error);
             this.showError('Failed to load users');
@@ -237,6 +243,14 @@ class AdminPanel {
             }
         };
 
+        // Add CSRF token for non-GET requests
+        if (method !== 'GET') {
+            const csrfToken = this.getCSRFToken();
+            if (csrfToken) {
+                options.headers['X-CSRFToken'] = csrfToken;
+            }
+        }
+
         if (data) {
             options.body = JSON.stringify(data);
         }
@@ -245,14 +259,34 @@ class AdminPanel {
         console.log(`API Response: ${response.status} ${response.statusText}`);
         
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            console.error('API Error:', errorData);
-            throw new Error(errorData.error || `HTTP ${response.status}`);
+            const errorText = await response.text();
+            console.error('API Error Response:', errorText);
+            
+            let errorData = {};
+            try {
+                errorData = JSON.parse(errorText);
+            } catch (e) {
+                errorData = { error: errorText || `HTTP ${response.status}` };
+            }
+            
+            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
         }
 
         const result = await response.json();
         console.log('API Result:', result);
         return result;
+    }
+
+    getCSRFToken() {
+        // Try to get CSRF token from cookie
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+            const [name, value] = cookie.trim().split('=');
+            if (name === 'csrftoken') {
+                return value;
+            }
+        }
+        return null;
     }
 
     updateElement(id, value) {
@@ -1125,6 +1159,58 @@ class AdminPanel {
             row.style.display = matches ? '' : 'none';
         });
     }
+}
+
+// Export function for data
+function exportData(type) {
+    let data = [];
+    let filename = '';
+    
+    switch(type) {
+        case 'users':
+            data = window.adminPanel.currentUsers || [];
+            filename = 'users_export.csv';
+            break;
+        case 'bookings':
+            data = window.adminPanel.currentBookings || [];
+            filename = 'bookings_export.csv';
+            break;
+        case 'services':
+            data = window.adminPanel.currentServices || [];
+            filename = 'services_export.csv';
+            break;
+    }
+    
+    if (data.length === 0) {
+        alert('No data to export');
+        return;
+    }
+    
+    // Convert to CSV
+    const headers = Object.keys(data[0]);
+    const csvContent = [
+        headers.join(','),
+        ...data.map(row => headers.map(header => {
+            const value = row[header];
+            return typeof value === 'object' ? JSON.stringify(value) : value;
+        }).join(','))
+    ].join('\n');
+    
+    // Download file
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.URL.revokeObjectURL(url);
+}
+
+// Logout function
+function logout() {
+    sessionStorage.removeItem('adminLoggedIn');
+    sessionStorage.removeItem('adminUser');
+    window.location.href = '/static/admin/login.html';
 }
 
 // Initialize admin panel when DOM is loaded

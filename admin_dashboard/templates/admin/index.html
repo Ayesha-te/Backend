@@ -255,9 +255,6 @@
             <h2>👥 User Management</h2>
             <div class="module-content">
                 <a href="{% url 'admin:accounts_customuser_changelist' %}" class="model-link">Users</a>
-                <a href="{% url 'admin:accounts_vehicle_changelist' %}" class="model-link">Vehicles</a>
-                <a href="{% url 'admin:accounts_booking_changelist' %}" class="model-link">Account Bookings</a>
-                <a href="{% url 'admin:accounts_document_changelist' %}" class="model-link">Documents</a>
             </div>
         </div>
         
@@ -269,14 +266,7 @@
             </div>
         </div>
         
-        <div class="module">
-            <h2>🚗 DVLA Services</h2>
-            <div class="module-content">
-                <a href="{% url 'admin:DVLAA_service_changelist' %}" class="model-link">Services</a>
-                <a href="{% url 'admin:DVLAA_booking_changelist' %}" class="model-link">Bookings</a>
-                <a href="{% url 'admin:DVLAA_cartitem_changelist' %}" class="model-link">Cart Items</a>
-            </div>
-        </div>
+
         
         <div class="module">
             <h2>🔐 Authentication</h2>
@@ -310,31 +300,69 @@ async function loadStats() {
     }
 }
 
-function updateRecentActivity() {
+async function updateRecentActivity() {
     const activityList = document.getElementById('recentActivity');
-    activityList.innerHTML = `
-        <li class="activity-item">
-            <div class="activity-info">
-                <div class="activity-title">New user registration</div>
-                <div class="activity-meta">user@example.com</div>
-            </div>
-            <div class="activity-time">2 min ago</div>
-        </li>
-        <li class="activity-item">
-            <div class="activity-info">
-                <div class="activity-title">MOT booking completed</div>
-                <div class="activity-meta">Payment received</div>
-            </div>
-            <div class="activity-time">5 min ago</div>
-        </li>
-        <li class="activity-item">
-            <div class="activity-info">
-                <div class="activity-title">New service added</div>
-                <div class="activity-meta">DVLA Vehicle Check</div>
-            </div>
-            <div class="activity-time">1 hour ago</div>
-        </li>
-    `;
+    
+    try {
+        // Fetch real recent activity data
+        const [usersResponse, bookingsResponse] = await Promise.all([
+            fetch('{% url "admin:dashboard_stats_api" %}'),
+            fetch('/api/bookings/')
+        ]);
+        
+        if (usersResponse.ok && bookingsResponse.ok) {
+            const bookingsData = await bookingsResponse.json();
+            const recentBookings = (bookingsData.results || []).slice(0, 3);
+            
+            if (recentBookings.length > 0) {
+                activityList.innerHTML = recentBookings.map(booking => `
+                    <li class="activity-item">
+                        <div class="activity-info">
+                            <div class="activity-title">New booking: ${booking.service?.name || 'Service'}</div>
+                            <div class="activity-meta">${booking.customer_email || 'Customer'}</div>
+                        </div>
+                        <div class="activity-time">${formatTimeAgo(booking.created_at)}</div>
+                    </li>
+                `).join('');
+            } else {
+                activityList.innerHTML = `
+                    <li class="activity-item">
+                        <div class="activity-info">
+                            <div class="activity-title">No recent activity</div>
+                            <div class="activity-meta">System is ready for new bookings</div>
+                        </div>
+                        <div class="activity-time">Now</div>
+                    </li>
+                `;
+            }
+        } else {
+            throw new Error('Failed to fetch activity data');
+        }
+    } catch (error) {
+        console.error('Error loading recent activity:', error);
+        activityList.innerHTML = `
+            <li class="activity-item">
+                <div class="activity-info">
+                    <div class="activity-title">System Active</div>
+                    <div class="activity-meta">Admin panel ready</div>
+                </div>
+                <div class="activity-time">Now</div>
+            </li>
+        `;
+    }
+}
+
+function formatTimeAgo(dateString) {
+    if (!dateString) return 'Recently';
+    
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffInSeconds = Math.floor((now - date) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} min ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    return `${Math.floor(diffInSeconds / 86400)} days ago`;
 }
 
 // Load stats on page load
