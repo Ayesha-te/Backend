@@ -153,27 +153,29 @@ SIMPLE_JWT = {
 }
 
 # CORS Configuration
-# Get allowed origins from environment variable or use defaults
-CORS_ALLOWED_ORIGINS_ENV = os.getenv('CORS_ALLOWED_ORIGINS', '')
-if CORS_ALLOWED_ORIGINS_ENV:
-    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS_ENV.split(',')]
-else:
-    CORS_ALLOWED_ORIGINS = [
-        # Development origins
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "http://localhost:5176",
+# Allow all origins for public access
+CORS_ALLOW_ALL_ORIGINS = True  # Allow access from any origin
 
-        # Production origins
-        "https://www.access-auto-services.co.uk",
-        "https://access-auto-services.co.uk",
-    ]
-
-# Additional CORS settings for production
+# Keep credentials support for authenticated requests
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = False  # Keep this False for security
+
+# Backup specific origins configuration (commented out since we're allowing all)
+# CORS_ALLOWED_ORIGINS_ENV = os.getenv('CORS_ALLOWED_ORIGINS', '')
+# if CORS_ALLOWED_ORIGINS_ENV:
+#     CORS_ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS_ENV.split(',')]
+# else:
+#     CORS_ALLOWED_ORIGINS = [
+#         # Development origins
+#         "http://localhost:3000",
+#         "http://127.0.0.1:3000",
+#         "http://localhost:8000",
+#         "http://127.0.0.1:8000",
+#         "http://localhost:5176",
+#
+#         # Production origins
+#         "https://www.access-auto-services.co.uk",
+#         "https://access-auto-services.co.uk",
+#     ]
 
 # Allow specific headers that your frontend might send
 CORS_ALLOWED_HEADERS = [
