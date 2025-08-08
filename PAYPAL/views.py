@@ -134,34 +134,51 @@ class BookingListCreateAPIView(generics.ListCreateAPIView):
             quantity = data.get('quantity', 1)
             payment_amount = float(price) * int(quantity)
 
+            # Get payment method
+            payment_method = payment_data.get('method', 'card')
+            
+            # Prepare booking data
+            booking_data = {
+                'user': self.request.user if self.request.user.is_authenticated else None,
+                'mot_class': data.get('motClass', ''),
+                'date': date_obj,
+                'time': time_obj.strftime('%H:%M'),
+                'vehicle_make': vehicle_data.get('make', ''),
+                'vehicle_model': vehicle_data.get('model', ''),
+                'vehicle_year': vehicle_data.get('year', ''),
+                'vehicle_registration': vehicle_data.get('registration', ''),
+                'vehicle_mileage': vehicle_data.get('mileage', ''),
+                'customer_first_name': customer_data.get('firstName', ''),
+                'customer_last_name': customer_data.get('lastName', ''),
+                'customer_email': customer_data.get('email', ''),
+                'customer_phone': customer_data.get('phone', ''),
+                'customer_address': customer_data.get('address', ''),
+                'payment_method': payment_method,
+                'is_verified': False,
+                'verification_token': verification_token,
+                'payment_amount': payment_amount,
+                'payment_currency': 'GBP'
+            }
+
+            # Only add card details if payment method is card
+            if payment_method == 'card':
+                booking_data.update({
+                    'card_number': payment_data.get('cardNumber', ''),
+                    'expiry_date': payment_data.get('expiryDate', ''),
+                    'cvv': payment_data.get('cvv', ''),
+                    'name_on_card': payment_data.get('nameOnCard', ''),
+                })
+            else:
+                # For PayPal and other methods, leave card fields empty
+                booking_data.update({
+                    'card_number': '',
+                    'expiry_date': '',
+                    'cvv': '',
+                    'name_on_card': '',
+                })
+
             # Save the booking
-            # Only assign user if authenticated, otherwise allow null for anonymous bookings
-            user = self.request.user if self.request.user.is_authenticated else None
-            booking = serializer.save(
-                user=user,
-                mot_class=data.get('motClass', ''),
-                date=date_obj,
-                time=time_obj.strftime('%H:%M'),
-                vehicle_make=vehicle_data.get('make', ''),
-                vehicle_model=vehicle_data.get('model', ''),
-                vehicle_year=vehicle_data.get('year', ''),
-                vehicle_registration=vehicle_data.get('registration', ''),
-                vehicle_mileage=vehicle_data.get('mileage', ''),
-                customer_first_name=customer_data.get('firstName', ''),
-                customer_last_name=customer_data.get('lastName', ''),
-                customer_email=customer_data.get('email', ''),
-                customer_phone=customer_data.get('phone', ''),
-                customer_address=customer_data.get('address', ''),
-                payment_method=payment_data.get('method', 'card'),
-                card_number=payment_data.get('cardNumber', ''),
-                expiry_date=payment_data.get('expiryDate', ''),
-                cvv=payment_data.get('cvv', ''),
-                name_on_card=payment_data.get('nameOnCard', ''),
-                is_verified=False,
-                verification_token=verification_token,
-                payment_amount=payment_amount,
-                payment_currency='GBP'
-            )
+            booking = serializer.save(**booking_data)
             
             logger.info(f"Booking created successfully with ID: {booking.id}")
 
@@ -666,28 +683,42 @@ class PayPalCreateOrderAPIView(APIView):
         booking_id = request.data.get('booking_id')
         customer_email = request.data.get('customer_email')  # For anonymous users
         
+        logger.info(f"PayPal create order request - booking_id: {booking_id}, customer_email: {customer_email}")
+        
         if not booking_id:
+            logger.error("PayPal create order failed: Missing booking_id")
             return Response({"error": "Missing booking_id"}, status=400)
 
         try:
             # For authenticated users, filter by user
             if request.user.is_authenticated:
                 booking = Booking.objects.get(id=booking_id, user=request.user)
+                logger.info(f"Found booking {booking_id} for authenticated user {request.user.id}")
             else:
                 # For anonymous users, require email verification
                 if not customer_email:
+                    logger.error("PayPal create order failed: Email required for anonymous payment")
                     return Response({"error": "Email required for anonymous payment"}, status=400)
                 booking = Booking.objects.get(id=booking_id, customer_email=customer_email)
+                logger.info(f"Found booking {booking_id} for anonymous user with email {customer_email}")
         except Booking.DoesNotExist:
+            logger.error(f"PayPal create order failed: Booking {booking_id} not found")
             return Response({"error": "Booking not found"}, status=404)
 
         if booking.is_paid:
+            logger.warning(f"PayPal create order failed: Booking {booking_id} is already paid")
             return Response({"error": "Booking is already paid"}, status=400)
 
         try:
-            # Create PayPal order
-            amount = float(booking.payment_amount) if booking.payment_amount else 0
+            # Validate payment amount
+            amount = float(booking.payment_amount) if booking.payment_amount else float(booking.service.price)
+            if amount <= 0:
+                logger.error(f"PayPal create order failed: Invalid amount {amount} for booking {booking_id}")
+                return Response({"error": "Invalid payment amount"}, status=400)
+            
             description = f"Booking for {booking.service.name} on {booking.date}"
+            
+            logger.info(f"Creating PayPal order - Amount: {amount}, Currency: {booking.payment_currency}, Description: {description}")
             
             order = paypal_api.create_order(
                 amount=amount,
@@ -697,23 +728,26 @@ class PayPalCreateOrderAPIView(APIView):
             )
             
             # Store PayPal order ID in booking
+            booking.payment_method = 'paypal'  # Ensure payment method is set to paypal
             booking.paypal_order_id = order.get('id')
             booking.payment_status = 'created'
             booking.save()
             
-            logger.info(f"PayPal order created for booking {booking_id}: {order.get('id')}")
+            logger.info(f"PayPal order created successfully for booking {booking_id}: {order.get('id')}")
             
             return Response({
                 "order_id": order.get('id'),
                 "booking_id": booking.id,
                 "amount": amount,
-                "currency": booking.payment_currency
+                "currency": booking.payment_currency,
+                "status": "created"
             }, status=201)
 
         except Exception as e:
-            logger.error(f"Failed to create PayPal order for booking {booking_id}: {e}")
+            logger.error(f"Failed to create PayPal order for booking {booking_id}: {str(e)}")
             return Response({
-                "error": "Failed to create payment order. Please try again."
+                "error": "Failed to create payment order. Please try again.",
+                "details": str(e) if settings.DEBUG else None
             }, status=500)
 
 
