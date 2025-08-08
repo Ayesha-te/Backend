@@ -164,7 +164,8 @@ else:
         "http://127.0.0.1:3000",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
-        
+        "http://localhost:5176",
+
         # Production origins
         "https://www.access-auto-services.co.uk",
         "https://access-auto-services.co.uk",
