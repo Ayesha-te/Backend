@@ -28,7 +28,7 @@ class EmailVerificationAPIView(APIView):
     Handle email verification requests
     POST: Send verification email
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         try:
@@ -165,7 +165,7 @@ class BookingReminderAPIView(APIView):
     Handle booking reminder scheduling
     POST: Schedule a booking reminder
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         try:
@@ -234,7 +234,7 @@ class SendReminderNowAPIView(APIView):
     Manual endpoint to send reminder emails (for testing or manual triggers)
     POST: Send reminder email immediately
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     
     def post(self, request):
         reminder_id = request.data.get('reminder_id')

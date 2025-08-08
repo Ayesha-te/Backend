@@ -10,6 +10,7 @@ class AdminPanel {
         this.currentBookings = [];
         this.currentServices = [];
         this.currentUsers = [];
+        this.refreshInterval = null;
         this.init();
     }
 
@@ -88,6 +89,7 @@ class AdminPanel {
         // Load page-specific data
         this.loadPageData(page);
         this.currentPage = page;
+        this.startAutoRefresh(page);
     }
 
     getPageTitle(page) {
@@ -100,6 +102,55 @@ class AdminPanel {
             reports: 'Reports'
         };
         return titles[page] || 'Dashboard';
+    }
+
+    startAutoRefresh(page) {
+        // Clear existing interval
+        if (this.refreshInterval) {
+            clearInterval(this.refreshInterval);
+        }
+
+        // Set up auto-refresh for data pages (every 30 seconds)
+        if (['users', 'bookings', 'services', 'dashboard'].includes(page)) {
+            this.refreshInterval = setInterval(() => {
+                console.log(`🔄 Auto-refreshing ${page} data...`);
+                this.loadPageData(page);
+                
+                // Show a subtle indicator that data is being refreshed
+                const indicator = document.createElement('div');
+                indicator.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refreshing...';
+                indicator.className = 'position-fixed top-0 end-0 bg-primary text-white px-3 py-1 rounded-bottom';
+                indicator.style.zIndex = '9999';
+                document.body.appendChild(indicator);
+                
+                setTimeout(() => {
+                    if (indicator.parentNode) {
+                        indicator.parentNode.removeChild(indicator);
+                    }
+                }, 2000);
+            }, 30000); // 30 seconds
+        }
+    }
+
+    updateLastRefreshTime(page) {
+        const now = new Date();
+        const timeString = now.toLocaleTimeString();
+        console.log(`📊 ${page} data updated at ${timeString}`);
+        
+        // You could add a visual indicator here if needed
+        const pageElement = document.getElementById(`${page}-page`);
+        if (pageElement) {
+            let indicator = pageElement.querySelector('.last-refresh');
+            if (!indicator) {
+                indicator = document.createElement('small');
+                indicator.className = 'last-refresh text-muted';
+                const header = pageElement.querySelector('h2');
+                if (header) {
+                    header.appendChild(indicator);
+                }
+            }
+            indicator.textContent = ` (Updated: ${timeString})`;
+        }
     }
 
     async loadPageData(page) {
@@ -212,9 +263,22 @@ class AdminPanel {
             const response = await this.apiCall('/users/');
             this.currentUsers = response.results || [];
             this.renderUsersTable(this.currentUsers);
+            this.updateLastRefreshTime('users');
         } catch (error) {
             console.error('Error loading users:', error);
             this.showError('Failed to load users');
+        }
+    }
+
+    async loadBookingsData() {
+        try {
+            const response = await this.apiCall('/bookings/');
+            this.currentBookings = response.results || [];
+            this.renderBookingsTable(this.currentBookings);
+            this.updateLastRefreshTime('bookings');
+        } catch (error) {
+            console.error('Error loading bookings:', error);
+            this.showError('Failed to load bookings');
         }
     }
 

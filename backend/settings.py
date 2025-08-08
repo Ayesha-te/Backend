@@ -210,7 +210,8 @@ CORS_EXPOSE_HEADERS = [
 # PayPal Configuration
 PAYPAL_CLIENT_ID = os.getenv('PAYPAL_CLIENT_ID')
 PAYPAL_SECRET = os.getenv('PAYPAL_SECRET')
-PAYPAL_API_BASE = os.getenv('PAYPAL_API_BASE', 'https://api-m.sandbox.paypal.com')
+PAYPAL_API_BASE = os.getenv('PAYPAL_API_BASE', 'https://api-m.paypal.com')
+PAYPAL_WEBHOOK_ID = os.getenv('PAYPAL_WEBHOOK_ID')
 
 # DVLA API Configuration
 DVLA_API_KEY = os.getenv('DVLA_API_KEY')

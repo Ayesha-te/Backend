@@ -513,7 +513,8 @@ class PayPalCreateOrderAPIView(APIView):
             order = paypal_api.create_order(
                 amount=amount,
                 currency=booking.payment_currency,
-                description=description
+                description=description,
+                custom_id=booking.id
             )
             
             # Store PayPal order ID in booking
@@ -535,3 +536,173 @@ class PayPalCreateOrderAPIView(APIView):
             return Response({
                 "error": "Failed to create payment order. Please try again."
             }, status=500)
+
+
+class BookingDetailAPIView(APIView):
+    """Retrieve individual booking details"""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, booking_id):
+        customer_email = request.query_params.get('email')
+        
+        try:
+            # For authenticated users, filter by user
+            if request.user.is_authenticated:
+                booking = Booking.objects.get(id=booking_id, user=request.user)
+            else:
+                # For anonymous users, require email verification
+                if not customer_email:
+                    return Response({"error": "Email required for anonymous access"}, status=400)
+                booking = Booking.objects.get(id=booking_id, customer_email=customer_email)
+        except Booking.DoesNotExist:
+            return Response({"error": "Booking not found"}, status=404)
+
+        serializer = BookingSerializer(booking)
+        return Response(serializer.data, status=200)
+
+
+class PayPalWebhookAPIView(APIView):
+    """Handle PayPal webhook notifications"""
+    permission_classes = [permissions.AllowAny]
+    
+    def post(self, request):
+        try:
+            # Get webhook headers and body
+            headers = {
+                'PAYPAL-AUTH-ALGO': request.META.get('HTTP_PAYPAL_AUTH_ALGO'),
+                'PAYPAL-CERT-ID': request.META.get('HTTP_PAYPAL_CERT_ID'),
+                'PAYPAL-TRANSMISSION-ID': request.META.get('HTTP_PAYPAL_TRANSMISSION_ID'),
+                'PAYPAL-TRANSMISSION-SIG': request.META.get('HTTP_PAYPAL_TRANSMISSION_SIG'),
+                'PAYPAL-TRANSMISSION-TIME': request.META.get('HTTP_PAYPAL_TRANSMISSION_TIME'),
+            }
+            
+            # Verify webhook signature
+            if not paypal_api.verify_webhook_signature(headers, request.data):
+                logger.warning("PayPal webhook signature verification failed")
+                return Response({"error": "Invalid signature"}, status=400)
+            
+            event_type = request.data.get('event_type')
+            resource = request.data.get('resource', {})
+            
+            logger.info(f"PayPal webhook received: {event_type}")
+            
+            # Handle payment completion
+            if event_type == 'PAYMENT.CAPTURE.COMPLETED':
+                self.handle_payment_completed(resource)
+            elif event_type == 'PAYMENT.CAPTURE.DENIED':
+                self.handle_payment_denied(resource)
+            elif event_type == 'PAYMENT.CAPTURE.REFUNDED':
+                self.handle_payment_refunded(resource)
+            
+            return Response({"status": "success"}, status=200)
+            
+        except Exception as e:
+            logger.error(f"PayPal webhook error: {e}")
+            return Response({"error": "Webhook processing failed"}, status=500)
+    
+    def handle_payment_completed(self, resource):
+        """Handle completed payment"""
+        try:
+            # Extract payment details
+            capture_id = resource.get('id')
+            amount = resource.get('amount', {})
+            custom_id = resource.get('custom_id')  # This should contain booking ID
+            
+            if custom_id:
+                try:
+                    booking = Booking.objects.get(id=custom_id)
+                    booking.payment_status = 'completed'
+                    booking.is_paid = True
+                    booking.paypal_transaction_id = capture_id
+                    booking.save()
+                    
+                    # Send payment confirmation email
+                    self.send_payment_confirmation_email(booking)
+                    
+                    logger.info(f"Payment completed for booking {booking.id}: {capture_id}")
+                    
+                except Booking.DoesNotExist:
+                    logger.error(f"Booking not found for payment: {custom_id}")
+            
+        except Exception as e:
+            logger.error(f"Error handling payment completion: {e}")
+    
+    def handle_payment_denied(self, resource):
+        """Handle denied payment"""
+        try:
+            custom_id = resource.get('custom_id')
+            if custom_id:
+                try:
+                    booking = Booking.objects.get(id=custom_id)
+                    booking.payment_status = 'failed'
+                    booking.save()
+                    
+                    logger.info(f"Payment denied for booking {booking.id}")
+                    
+                except Booking.DoesNotExist:
+                    logger.error(f"Booking not found for denied payment: {custom_id}")
+                    
+        except Exception as e:
+            logger.error(f"Error handling payment denial: {e}")
+    
+    def handle_payment_refunded(self, resource):
+        """Handle refunded payment"""
+        try:
+            custom_id = resource.get('custom_id')
+            if custom_id:
+                try:
+                    booking = Booking.objects.get(id=custom_id)
+                    booking.payment_status = 'refunded'
+                    booking.save()
+                    
+                    logger.info(f"Payment refunded for booking {booking.id}")
+                    
+                except Booking.DoesNotExist:
+                    logger.error(f"Booking not found for refunded payment: {custom_id}")
+                    
+        except Exception as e:
+            logger.error(f"Error handling payment refund: {e}")
+    
+    def send_payment_confirmation_email(self, booking):
+        """Send payment confirmation email"""
+        try:
+            from django.core.mail import send_mail
+            from django.conf import settings
+            
+            recipient_list = [booking.customer_email]
+            owner_email = settings.OWNER_EMAIL
+            if owner_email and owner_email not in recipient_list:
+                recipient_list.append(owner_email)
+            
+            subject = 'Payment Confirmed - Access Auto Services'
+            message = f"""
+Dear {booking.customer_first_name or 'Customer'},
+
+Your payment has been successfully processed!
+
+Booking Details:
+- Service: {booking.service.name}
+- Date: {booking.date}
+- Time: {booking.time}
+- Vehicle: {booking.vehicle_make} {booking.vehicle_model} ({booking.vehicle_registration})
+- Amount: £{booking.payment_amount}
+- Transaction ID: {booking.paypal_transaction_id}
+
+Your booking is now confirmed. We look forward to seeing you!
+
+Best regards,
+Access Auto Services Team
+            """
+            
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=recipient_list,
+                fail_silently=False,
+            )
+            
+            logger.info(f"Payment confirmation email sent for booking {booking.id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to send payment confirmation email: {e}")
