@@ -1,4 +1,6 @@
 // Access Auto Services Admin Panel JavaScript
+// Version 2.0 - Updated with real data and CRUD operations
+// Last updated: 2025-08-08
 
 class AdminPanel {
     constructor() {

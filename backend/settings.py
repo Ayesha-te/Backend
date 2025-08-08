@@ -122,6 +122,11 @@ STATICFILES_DIRS = [
     BASE_DIR / 'static',
 ]
 
+# Static files cache control
+if not DEBUG:
+    # Force cache refresh for admin panel files
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
+
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
